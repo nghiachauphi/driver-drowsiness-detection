@@ -1,0 +1,30 @@
+# Local environments and Python caches
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Local IDE/agent configuration
+.agents/
+.claude/
+.codex/
+.vscode/
+.idea/
+
+# Generated local notebook and runtime files
+DDD_Drowsiness_Local.ipynb
+*.log
+*.tmp
+*.zip
+
+# Installers and local academic deliverables
+python-*.exe
+*.docx
+*.pptx
+
+# Duplicate exported result bundle
+ket_qua_do_an/
+
+# Keep only the model required by the Streamlit app
+outputs/models/*.keras
+!outputs/models/E6_MobileNetV2_subject.keras

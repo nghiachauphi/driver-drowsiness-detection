@@ -1,0 +1,7 @@
+﻿Thí nghiệm,Mô hình,Giao thức,Accuracy,Precision,Recall,F1-Score,ROC-AUC,Thời gian train (phút),Số ảnh test
+E1,CustomCNN,random,0.496,0.0,0.0,0.0,0.5725,0.4,125
+E2,ResNet50,random,0.936,0.9231,0.9524,0.9375,0.9823,0.6,125
+E3,MobileNetV2,random,0.872,0.8615,0.8889,0.875,0.9252,0.3,125
+E4,CustomCNN,subject,0.7748,0.8077,0.863,0.8344,0.6918,0.4,111
+E5,ResNet50,subject,0.5856,0.6709,0.726,0.6974,0.4553,0.5,111
+E6,MobileNetV2,subject,0.4324,0.6087,0.3836,0.4706,0.4614,0.2,111

@@ -1,0 +1,1 @@
+{"metrics": {"Th\u00ed nghi\u1ec7m": "E3", "M\u00f4 h\u00ecnh": "MobileNetV2", "Giao th\u1ee9c": "random", "Accuracy": 0.872, "Precision": 0.8615, "Recall": 0.8889, "F1-Score": 0.875, "ROC-AUC": 0.9252, "Th\u1eddi gian train (ph\u00fat)": 0.3, "S\u1ed1 \u1ea3nh test": 125}, "confusion_matrix": [[53, 9], [7, 56]]}

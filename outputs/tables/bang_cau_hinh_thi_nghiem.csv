@@ -1,0 +1,21 @@
+﻿Tham số,Giá trị
+img_size,96
+batch_size,32
+seed,42
+train_ratio,0.7
+val_ratio,0.15
+test_ratio,0.15
+optimizer,Adam
+lr_head,0.001
+lr_finetune,1e-05
+loss,Binary cross-entropy
+epochs_head,2
+epochs_finetune,1
+es_patience,4
+rlrop_factor,0.5
+rlrop_patience,2
+aug_flip,horizontal
+aug_rotation,0.028
+aug_zoom,0.1
+aug_brightness,0.2
+finetune_layers,30

@@ -1,0 +1,374 @@
+% =====================================================================
+%  THƯ MỤC TÀI LIỆU THAM KHẢO
+%  Đồ án: Phát hiện hành vi buồn ngủ của tài xế từ hình ảnh khuôn mặt
+%         sử dụng Deep Learning
+%  Chuẩn trích dẫn: IEEE
+%
+%  PHIÊN BẢN NÀY ĐÃ ĐỒNG BỘ VỚI BÁO CÁO:
+%  - Mọi mục [ĐIỀN TỪ DOI] / [ĐIỀN TỪ arXiv] đã được điền bằng metadata
+%    lấy trực tiếp từ trang xuất bản (Springer, MDPI, Nature, arXiv).
+%  - Một số khoá trích dẫn đã đổi cho khớp tác giả đầu thật (ghi rõ bên
+%    dưới từng mục). Khoá cũ không còn dùng.
+%  - Dòng "% [n]" trước mỗi mục là số thứ tự IEEE tương ứng trong bản
+%    Word đã chèn trích dẫn, đánh theo thứ tự xuất hiện lần đầu.
+%
+%  CÁCH DÙNG VỚI MENDELEY:
+%  1. Mendeley Reference Manager → File → Import → BibTeX (.bib).
+%  2. Trong Word, mở Mendeley Cite, chọn citation style = IEEE.
+%  3. Thay từng nhãn [n] trong thân bài bằng Insert Citation, và thay
+%     cả khối danh mục cuối báo cáo bằng Insert Bibliography. Khi đó số
+%     thứ tự sẽ tự cập nhật nếu nhóm thêm/bớt tài liệu.
+%  4. Khi thêm tài liệu mới trong Mendeley, export lại tệp .bib này để
+%     hai bên luôn đồng bộ (yêu cầu của thầy).
+% =====================================================================
+
+
+% ---------------------------------------------------------------------
+% NHÓM A — BỘ DỮ LIỆU
+% ---------------------------------------------------------------------
+
+% [19]
+@misc{nasri2022ddd,
+  author       = {Nasri, Ismail},
+  title        = {Driver Drowsiness Dataset ({DDD})},
+  year         = {2022},
+  howpublished = {Kaggle},
+  url          = {https://www.kaggle.com/datasets/ismailnasri20/driver-drowsiness-dataset-ddd},
+  note         = {Bộ dữ liệu chính sử dụng trong đồ án. Gồm ảnh khuôn mặt
+                  RGB 227x227 thuộc hai lớp Drowsy va Non-Drowsy, trích từ
+                  bộ RLDD. Truy cập ngày: [ĐIỀN NGÀY TRUY CẬP]}
+}
+
+% [15]
+@inproceedings{ghoddoosian2019rldd,
+  author    = {Ghoddoosian, Reza and Galib, Marnim and Athitsos, Vassilis},
+  title     = {A Realistic Dataset and Baseline Temporal Model for Early
+               Drowsiness Detection},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and
+               Pattern Recognition ({CVPR}) Workshops},
+  year      = {2019},
+  note      = {Bộ Real-Life Drowsiness Dataset (RLDD) - nguồn gốc của bộ DDD.
+               Trích dẫn ở mục 1.5 và 2.2}
+}
+
+% [14]
+@inproceedings{weng2016nthuddd,
+  author    = {Weng, Ching-Hua and Lai, Ying-Hsiu and Lai, Shang-Hong},
+  title     = {Driver Drowsiness Detection via a Hierarchical Temporal Deep
+               Belief Network},
+  booktitle = {Computer Vision -- {ACCV} 2016 Workshops},
+  publisher = {Springer},
+  year      = {2016},
+  note      = {Bộ dữ liệu NTHU-DDD. Trích dẫn ở mục 1.5 và 3.3}
+}
+
+% [21]
+@misc{fusek2018mrl,
+  author       = {Fusek, Radovan},
+  title        = {{MRL} Eye Dataset},
+  year         = {2018},
+  howpublished = {Media Research Lab, {VSB} -- Technical University of Ostrava},
+  url          = {https://mrl.cs.vsb.cz/eyedataset},
+  note         = {84.898 ảnh mắt hồng ngoại từ 37 người. Trích dẫn ở mục 3.3
+                  như một lựa chọn kiểm chứng chéo giữa các bộ dữ liệu}
+}
+
+% [4]
+@inproceedings{deng2009imagenet,
+  author    = {Deng, Jia and Dong, Wei and Socher, Richard and Li, Li-Jia and
+               Li, Kai and Fei-Fei, Li},
+  title     = {{ImageNet}: A Large-Scale Hierarchical Image Database},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and
+               Pattern Recognition ({CVPR})},
+  pages     = {248--255},
+  year      = {2009},
+  doi       = {10.1109/CVPR.2009.5206848},
+  note      = {Nguồn trọng số huấn luyện sẵn dùng cho học chuyển giao.
+               Trích dẫn ở mục 1.4.1 và 1.4.5}
+}
+
+
+% ---------------------------------------------------------------------
+% NHÓM B — CƠ SỞ LÝ THUYẾT (công trình nền tảng)
+%
+% Ghi chú cho nhóm: thầy yêu cầu tài liệu trong 3 năm gần nhất. Yêu cầu
+% này áp dụng cho phần NGHIÊN CỨU LIÊN QUAN (Nhóm C bên dưới). Các công
+% trình nền tảng về kiến trúc mạng dưới đây không thể thay bằng bản mới
+% hơn vì chúng chính là nguồn gốc của phương pháp. Nhóm nên hỏi thầy để
+% xác nhận điểm này trước khi nộp.
+% ---------------------------------------------------------------------
+
+% [3]
+@article{lecun2015deeplearning,
+  author  = {LeCun, Yann and Bengio, Yoshua and Hinton, Geoffrey},
+  title   = {Deep Learning},
+  journal = {Nature},
+  volume  = {521},
+  number  = {7553},
+  pages   = {436--444},
+  year    = {2015},
+  doi     = {10.1038/nature14539},
+  note    = {Trích dẫn ở mục 1.4.1}
+}
+
+% [8]
+@inproceedings{he2016resnet,
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  title     = {Deep Residual Learning for Image Recognition},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and
+               Pattern Recognition ({CVPR})},
+  pages     = {770--778},
+  year      = {2016},
+  doi       = {10.1109/CVPR.2016.90},
+  note      = {Kiến trúc ResNet50 - trích dẫn ở mục 1.4.6}
+}
+
+% [9]
+@inproceedings{sandler2018mobilenetv2,
+  author    = {Sandler, Mark and Howard, Andrew and Zhu, Menglong and
+               Zhmoginov, Andrey and Chen, Liang-Chieh},
+  title     = {{MobileNetV2}: Inverted Residuals and Linear Bottlenecks},
+  booktitle = {Proceedings of the {IEEE} Conference on Computer Vision and
+               Pattern Recognition ({CVPR})},
+  pages     = {4510--4520},
+  year      = {2018},
+  doi       = {10.1109/CVPR.2018.00474},
+  note      = {Kiến trúc MobileNetV2 - trích dẫn ở mục 1.4.7}
+}
+
+% [5]
+@inproceedings{ioffe2015batchnorm,
+  author    = {Ioffe, Sergey and Szegedy, Christian},
+  title     = {Batch Normalization: Accelerating Deep Network Training by
+               Reducing Internal Covariate Shift},
+  booktitle = {Proceedings of the 32nd International Conference on Machine
+               Learning ({ICML})},
+  pages     = {448--456},
+  year      = {2015},
+  note      = {Công thức (1.4) trong báo cáo, mục 1.4.3}
+}
+
+% [6]
+@article{srivastava2014dropout,
+  author  = {Srivastava, Nitish and Hinton, Geoffrey and Krizhevsky, Alex and
+             Sutskever, Ilya and Salakhutdinov, Ruslan},
+  title   = {Dropout: A Simple Way to Prevent Neural Networks from Overfitting},
+  journal = {Journal of Machine Learning Research},
+  volume  = {15},
+  number  = {1},
+  pages   = {1929--1958},
+  year    = {2014},
+  note    = {Trích dẫn ở mục 1.4.3}
+}
+
+% [7]
+@inproceedings{kingma2015adam,
+  author    = {Kingma, Diederik P. and Ba, Jimmy},
+  title     = {Adam: A Method for Stochastic Optimization},
+  booktitle = {Proceedings of the 3rd International Conference on Learning
+               Representations ({ICLR})},
+  year      = {2015},
+  note      = {Công thức (1.8)-(1.10) trong báo cáo, mục 1.4.4}
+}
+
+% [10]
+@inproceedings{selvaraju2017gradcam,
+  author    = {Selvaraju, Ramprasaath R. and Cogswell, Michael and Das,
+               Abhishek and Vedantam, Ramakrishna and Parikh, Devi and
+               Batra, Dhruv},
+  title     = {{Grad-CAM}: Visual Explanations from Deep Networks via
+               Gradient-Based Localization},
+  booktitle = {Proceedings of the {IEEE} International Conference on Computer
+               Vision ({ICCV})},
+  pages     = {618--626},
+  year      = {2017},
+  doi       = {10.1109/ICCV.2017.74},
+  note      = {Công thức (1.12)-(1.13); mục 1.4.8 và 2.11}
+}
+
+
+% ---------------------------------------------------------------------
+% NHÓM C — NGHIÊN CỨU LIÊN QUAN (trong 3 năm gần nhất)
+% Dùng cho mục 1.5 và bảng so sánh ở mục 2.10.3
+% ---------------------------------------------------------------------
+
+% [1]
+% Khoá cũ: survey2024drowsiness. Tác giả lấy từ arXiv:2408.12990.
+% Lưu ý: bản này đã được chấp nhận đăng ở IEEE Transactions on
+% Intelligent Vehicles (2024). Nếu truy cập được bản tạp chí, nhóm nên
+% thay bằng thông tin tập/số/trang chính thức.
+@misc{fu2024survey,
+  author       = {Fu, Biying and Boutros, Fadi and Lin, Chin-Teng and
+                  Damer, Naser},
+  title        = {A Survey on Drowsiness Detection -- Modern Applications
+                  and Methods},
+  year         = {2024},
+  howpublished = {arXiv preprint arXiv:2408.12990},
+  url          = {https://arxiv.org/abs/2408.12990},
+  note         = {Khảo sát tổng quan; dùng ở mục 1.1 và phần phân loại ba
+                  hướng tiếp cận ở mục 1.5}
+}
+
+% [2]
+% Khoá cũ: sncs2024efficient. Tác giả xác minh qua DOI (Springer).
+@article{ranjan2024efficient,
+  author  = {Ranjan, Abhineet and Sharma, Sanjeev and Mate, Prajwal and
+             Verma, Anshul},
+  title   = {An Efficient Deep Learning Technique for Driver Drowsiness
+             Detection},
+  journal = {{SN} Computer Science},
+  volume  = {5},
+  number  = {8},
+  pages   = {988},
+  year    = {2024},
+  doi     = {10.1007/s42979-024-03316-z},
+  note    = {TÀI LIỆU THEN CHỐT: so sánh DenseNet169, MobileNetV2,
+             ResNet50V2, VGG19, InceptionV3, Xception trên chính bộ DDD
+             (41.790 ảnh). Báo cáo ResNet50V2 đạt 100 phần trăm. Đối chiếu
+             trực tiếp ở mục 1.3, 1.5 và 2.10.3}
+}
+
+% [11]
+% Khoá cũ: shafique2023drowsiness. Tác giả ĐẦU thật là Fiaz Majeed, không
+% phải Shafique -- đã sửa theo trang MDPI/PubMed.
+@article{majeed2023drowsiness,
+  author  = {Majeed, Fiaz and Shafique, Umar and Safran, Mejdl and
+             Alfarhood, Sultan and Ashraf, Imran},
+  title   = {Detection of Drowsiness among Drivers Using Novel Deep
+             Convolutional Neural Network Model},
+  journal = {Sensors},
+  volume  = {23},
+  number  = {21},
+  pages   = {8741},
+  year    = {2023},
+  doi     = {10.3390/s23218741},
+  note    = {CNN kết hợp DLIB và chỉ số MAR, độ chính xác 96,69 phần trăm.
+             Trích dẫn ở mục 1.5 và 2.10.3}
+}
+
+% [12]
+@article{essahraui2025realtime,
+  author  = {Essahraui, Siham and Lamaakal, Ismail and El Hamly, Ikhlas and
+             Maleh, Yassine and Ouahbi, Ibrahim and El Makkaoui, Khalid and
+             Filali Bouami, Mouncef and P{\l}awiak, Pawe{\l} and
+             Alfarraj, Osama and Abd El-Latif, Ahmed A.},
+  title   = {Real-Time Driver Drowsiness Detection Using Facial Analysis and
+             Machine Learning Techniques},
+  journal = {Sensors},
+  volume  = {25},
+  number  = {3},
+  pages   = {812},
+  year    = {2025},
+  doi     = {10.3390/s25030812},
+  note    = {Đánh giá KNN, SVM, CNN, YOLOv5, YOLOv8, Faster R-CNN trên
+             NTHU-DDD, YawDD và UTA-RLDD. Trích dẫn ở mục 1.5}
+}
+
+% [13]
+% Khoá cũ: scirep2025transformer. Tác giả xác minh qua DOI (Nature/PMC).
+@article{hassan2025transformer,
+  author  = {Hassan, Osama F. and Ibrahim, Ahmed F. and Gomaa, Ahmed and
+             Makhlouf, M. A. and Hafiz, B.},
+  title   = {Real-Time Driver Drowsiness Detection Using Transformer
+             Architectures: A Novel Deep Learning Approach},
+  journal = {Scientific Reports},
+  volume  = {15},
+  pages   = {17493},
+  year    = {2025},
+  doi     = {10.1038/s41598-025-02111-x},
+  note    = {Kết hợp kiến trúc transformer và học chuyển giao; tiền xử lý
+             bằng Haar Cascade. Trích dẫn ở mục 1.5 và 2.10.3}
+}
+
+% [16]
+% Khoá cũ: appliedsci2025review. Tác giả xác minh qua DOI (MDPI).
+@article{fonseca2025review,
+  author  = {Fonseca, Tiago and Ferreira, Sara},
+  title   = {Drowsiness Detection in Drivers: A Systematic Review of
+             Deep Learning-Based Models},
+  journal = {Applied Sciences},
+  volume  = {15},
+  number  = {16},
+  pages   = {9018},
+  year    = {2025},
+  doi     = {10.3390/app15169018},
+  note    = {Tổng quan hệ thống theo PRISMA trên 81 nghiên cứu 2015-2025;
+             chỉ ra sự thiếu chuẩn hoá của giao thức đánh giá. Dùng làm mốc
+             tham chiếu ở mục 1.5}
+}
+
+
+% ---------------------------------------------------------------------
+% NHÓM D — RÒ RỈ DỮ LIỆU VÀ GIAO THỨC ĐÁNH GIÁ
+%
+% Đây là nhóm tài liệu quan trọng NHẤT của đồ án. Không có những trích
+% dẫn này thì luận điểm về rò rỉ danh tính chỉ là ý kiến cá nhân của
+% nhóm; có chúng thì nó trở thành một lập luận có nền tảng khoa học.
+% ---------------------------------------------------------------------
+
+% [17]
+@article{kapoor2023leakage,
+  author  = {Kapoor, Sayash and Narayanan, Arvind},
+  title   = {Leakage and the Reproducibility Crisis in Machine-Learning-Based
+             Science},
+  journal = {Patterns},
+  volume  = {4},
+  number  = {9},
+  pages   = {100804},
+  year    = {2023},
+  doi     = {10.1016/j.patter.2023.100804},
+  note    = {TÀI LIỆU THEN CHỐT. Khảo sát 294 bài báo thuộc 17 lĩnh vực có
+             kết quả bị vô hiệu do rò rỉ dữ liệu; đưa ra phân loại tám
+             kiểu rò rỉ. Trích dẫn ở mục 1.5 và 2.4}
+}
+
+% [18]
+% Tác giả đầy đủ xác minh qua DOI (Nature Communications / PubMed).
+@article{rosenblatt2024leakage,
+  author  = {Rosenblatt, Matthew and Tejavibulya, Link and Jiang, Rongtao and
+             Noble, Stephanie and Scheinost, Dustin},
+  title   = {Data Leakage Inflates Prediction Performance in
+             Connectome-Based Machine Learning Models},
+  journal = {Nature Communications},
+  volume  = {15},
+  pages   = {1829},
+  year    = {2024},
+  doi     = {10.1038/s41467-024-46150-w},
+  note    = {Chứng minh thực nghiệm rằng rò rỉ do lặp lại chủ thể
+             (subject leakage) làm thổi phồng mạnh hiệu năng dự đoán.
+             Đây là dạng rò rỉ ĐÚNG với trường hợp của bộ DDD.
+             Trích dẫn ở mục 1.5 và 2.4}
+}
+
+% [20]
+% Khoá cũ: reforms2023standards. Tác giả xác minh qua arXiv:2308.07832
+% (19 tác giả, ghi đầy đủ để Mendeley tự rút gọn theo style IEEE).
+% Lưu ý: có bản bình duyệt trên Science Advances; nếu nhóm truy cập được
+% thì nên trích bản tạp chí thay cho bản preprint.
+@misc{kapoor2023reforms,
+  author       = {Kapoor, Sayash and Cantrell, Emily and Peng, Kenny and
+                  Pham, Thanh Hien and Bail, Christopher A. and
+                  Gundersen, Odd Erik and Hofman, Jake M. and
+                  Hullman, Jessica and Lones, Michael A. and
+                  Malik, Momin M. and Nanayakkara, Priyanka and
+                  Poldrack, Russell A. and Raji, Inioluwa Deborah and
+                  Roberts, Michael and Salganik, Matthew J. and
+                  Serra-Garcia, Marta and Stewart, Brandon M. and
+                  Vandewiele, Gilles and Narayanan, Arvind},
+  title        = {{REFORMS}: Reporting Standards for Machine Learning
+                  Based Science},
+  year         = {2023},
+  howpublished = {arXiv preprint arXiv:2308.07832},
+  url          = {https://arxiv.org/abs/2308.07832},
+  note         = {Danh mục kiểm tra 32 câu hỏi về chuẩn báo cáo, trong đó
+                  có mục duy trì tách bạch train-test. Dùng để biện minh
+                  cho giao thức đánh giá ở mục 2.4}
+}
+
+
+% =====================================================================
+%  CÁC MỤC NHÓM TỰ BỔ SUNG SAU KHI TÌM TRÊN SCOPUS
+%  Dán các entry export từ Scopus/Mendeley vào bên dưới dòng này.
+%  Mục tiêu: bổ sung thêm tài liệu trong 3 năm gần nhất để lấp đầy bảng
+%  "Tổng hợp các nghiên cứu liên quan" (mục 1.5) và bảng so sánh ở 2.10.3.
+% =====================================================================

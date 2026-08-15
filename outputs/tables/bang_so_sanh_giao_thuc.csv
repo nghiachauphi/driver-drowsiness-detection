@@ -1,0 +1,4 @@
+﻿Mô hình,random,subject,Chênh lệch
+CustomCNN,0.496,0.7748,-0.2788
+MobileNetV2,0.872,0.4324,0.4396
+ResNet50,0.936,0.5856,0.3504

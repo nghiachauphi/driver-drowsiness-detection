@@ -1,0 +1,4 @@
+﻿Mô hình,Tổng tham số,Tham số huấn luyện được,Số layer
+CustomCNN,"1,208,161","1,206,241",35
+ResNet50,"23,850,113","262,401",181
+MobileNetV2,"2,422,081","164,097",160

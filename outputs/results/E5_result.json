@@ -1,0 +1,1 @@
+{"metrics": {"Th\u00ed nghi\u1ec7m": "E5", "M\u00f4 h\u00ecnh": "ResNet50", "Giao th\u1ee9c": "subject", "Accuracy": 0.5856, "Precision": 0.6709, "Recall": 0.726, "F1-Score": 0.6974, "ROC-AUC": 0.4553, "Th\u1eddi gian train (ph\u00fat)": 0.5, "S\u1ed1 \u1ea3nh test": 111}, "confusion_matrix": [[12, 26], [20, 53]]}

@@ -1,0 +1,17 @@
+﻿Thành phần,Thông số
+CPU,N/A (N/A luồng)
+RAM hệ thống,N/A
+GPU,NVIDIA GeForce RTX 3050 Ti Laptop GPU
+VRAM,4096 MiB
+Driver NVIDIA,527.37
+CUDA,N/A
+Nền tảng,Máy cục bộ
+Hệ điều hành,Windows 10
+Bản phân phối,N/A
+Python,3.11.9
+TensorFlow / Keras,2.21.0
+NumPy,2.4.6
+scikit-learn,1.9.0
+OpenCV,4.10.0
+Matplotlib,3.11.1
+Pandas,3.0.5

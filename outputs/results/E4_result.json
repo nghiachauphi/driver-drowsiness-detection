@@ -1,0 +1,1 @@
+{"metrics": {"Th\u00ed nghi\u1ec7m": "E4", "M\u00f4 h\u00ecnh": "CustomCNN", "Giao th\u1ee9c": "subject", "Accuracy": 0.7748, "Precision": 0.8077, "Recall": 0.863, "F1-Score": 0.8344, "ROC-AUC": 0.6918, "Th\u1eddi gian train (ph\u00fat)": 0.4, "S\u1ed1 \u1ea3nh test": 111}, "confusion_matrix": [[23, 15], [10, 63]]}

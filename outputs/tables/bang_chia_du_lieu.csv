@@ -1,0 +1,7 @@
+﻿Giao thức,Tập,Số ảnh,Tỷ lệ (%),Số người,Drowsy (%)
+random,Train,29255,70.0,28,53.47
+random,Validation,6269,15.0,28,53.47
+random,Test,6269,15.0,28,53.47
+subject,Train,31729,75.92,20,51.78
+subject,Validation,4508,10.79,3,49.98
+subject,Test,5556,13.29,5,66.0
