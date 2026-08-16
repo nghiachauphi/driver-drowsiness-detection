@@ -5,6 +5,10 @@ Tài liệu này dùng khi sao chép dự án sang một máy khác. Có hai cá
 - Chỉ chạy Streamlit bằng mô hình đã huấn luyện: cần `app.py` và mô hình E6.
 - Huấn luyện lại rồi chạy Streamlit: cần thêm notebook, script huấn luyện và dataset.
 
+> **Kết luận nhanh:** đổi sang máy khác **không cần huấn luyện lại** nếu tệp
+> `outputs/models/E6_MobileNetV2_subject.keras` đã có trong source. Máy mới chỉ
+> cần tạo lại môi trường Python, cài thư viện và chạy `app.py`.
+
 Các lệnh phải được chạy trong thư mục gốc của dự án, tức thư mục chứa `app.py`.
 
 ## 1. Những tệp cần sao chép
@@ -142,7 +146,40 @@ Trên macOS/Linux:
 
 Mở `http://localhost:8501`. Để dừng ứng dụng, quay lại Terminal/PowerShell và nhấn `Ctrl + C`.
 
-## 6. Huấn luyện tự động trên máy mới
+### 5.1. Đổi máy có cần huấn luyện lại không?
+
+Không cần huấn luyện lại khi mục đích là chạy ứng dụng bằng mô hình E6 đã có. Mô hình Keras có thể được nạp trên máy khác bằng CPU; máy mới không bắt buộc phải có GPU, dataset hoặc notebook đã thực thi.
+
+Quy trình trên máy mới:
+
+1. Clone repository từ GitHub hoặc sao chép thư mục source đã có mô hình E6.
+2. Không sao chép `.venv` từ máy cũ.
+3. Cài Python 3.11, tạo `.venv` và cài thư viện theo mục 3–4.
+4. Kiểm tra `outputs/models/E6_MobileNetV2_subject.keras` tồn tại.
+5. Chạy Streamlit bằng lệnh ở mục 5.
+
+Nếu lấy source từ GitHub:
+
+```powershell
+git clone https://github.com/nghiachauphi/driver-drowsiness-detection.git
+cd driver-drowsiness-detection
+```
+
+Chỉ cần huấn luyện lại trong các trường hợp sau:
+
+- Muốn cải thiện độ chính xác hoặc thay đổi ngưỡng/chiến lược huấn luyện.
+- Thay dataset, cách chia dữ liệu, kiến trúc mô hình hoặc tham số thí nghiệm.
+- Muốn tạo lại toàn bộ kết quả E1–E6 trên máy mới.
+- Tệp E6 bị thiếu, hỏng hoặc không nạp được và không thể lấy lại từ máy cũ/GitHub.
+
+| Mục đích trên máy mới | Có cần train lại? | Thành phần cần thiết |
+|---|---|---|
+| Chạy Streamlit với mô hình E6 | Không | Source, E6, Python và thư viện |
+| Xem notebook/kết quả đã xuất | Không | Notebook và thư mục `outputs` |
+| Thử ảnh, video hoặc webcam | Không | Source, E6 và thiết bị đầu vào tương ứng |
+| Thay đổi hoặc cải thiện mô hình | Có | Notebook, script, dataset và tài nguyên huấn luyện |
+
+## 6. Huấn luyện lại trên máy mới (không bắt buộc)
 
 Script sử dụng dataset Kaggle `ismailnasri20/driver-drowsiness-dataset-ddd`. Nếu không truyền đường dẫn dataset, KaggleHub sẽ tải dataset công khai vào cache của người dùng hoặc dùng lại bản đã tải trước đó.
 
@@ -265,7 +302,8 @@ Không sửa đường dẫn máy cũ trong `DDD_Drowsiness_Executed.ipynb`. Scr
 - Có E6 nếu muốn chạy Streamlit ngay mà không huấn luyện.
 - Không đóng gói `.venv`, cache dataset hoặc các tệp log.
 - Trên máy mới, tạo lại `.venv` và cài lại thư viện.
-- Chạy pilot với `--force`, sau đó mới chạy `--full --force` nếu cần huấn luyện đầy đủ.
+- Nếu chỉ chạy ứng dụng, không cần dataset và không chạy lệnh huấn luyện.
+- Chỉ khi cần huấn luyện lại: chạy pilot với `--force`, sau đó mới chạy `--full --force`.
 - Chạy Streamlit và kiểm tra ảnh/video trước khi thử webcam.
 
 Mô hình hiện phục vụ đồ án và minh họa học thuật, không phải thiết bị cảnh báo giao thông, chẩn đoán y tế hoặc hệ thống an toàn thực tế.
