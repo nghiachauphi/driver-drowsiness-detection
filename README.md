@@ -1,59 +1,68 @@
 # Driver Drowsiness Detection
 
-A deep learning-based driver drowsiness detection project using MobileNetV2, TensorFlow, OpenCV, and Streamlit.
+A TensorFlow, OpenCV, and Streamlit project for research on driver-drowsiness detection.
 
-## Features
+## What the application does
 
-- Detects the largest face in webcam, image, or video input.
-- Predicts a drowsiness probability with a MobileNetV2 binary classifier.
-- Provides real-time webcam inference through WebRTC.
-- Shows the original and probability-annotated videos side by side for direct comparison.
-- Extracts threshold-crossing alert frames from uploaded videos as separate JPEG images.
-- Displays a probability timeline and exports alert JPEGs with a CSV manifest in one ZIP archive.
-- Includes a portable local training runner for the DDD Kaggle dataset.
-- Exports experiment metrics, tables, plots, and Keras models.
+- Detects the largest face in an image, uploaded video, or live webcam stream.
+- Combines a MobileNetV2 face classifier with an independent open-eye check.
+- Requires sustained evidence over time before raising a video/webcam alert; one high-scoring frame is not enough.
+- Shows model score, rolling closed-eye ratio, alert timeline, annotated video, and downloadable evidence.
+- Keeps static-image output conservative: two detected open eyes override a drowsy CNN score.
+- Labels the CNN output as a model score, not a calibrated medical probability.
 
 ## Project structure
 
 ```text
 .
-├── app.py
-├── DDD_Drowsiness_Executed.ipynb
-├── run_local_notebook.py
-├── HUONG_DAN_CAI_DAT.md
-└── outputs/
-    ├── figures/
-    ├── models/E6_MobileNetV2_subject.keras
-    ├── results/
-    └── tables/
+|-- app.py                         # Streamlit application
+|-- drowsiness_temporal.py         # Stateful video/webcam decision logic
+|-- train_improved_model.py        # Subject-independent training/evaluation
+|-- DDD_Drowsiness_Executed.ipynb  # Original coursework experiments
+|-- run_local_notebook.py          # Original E1-E6 runner
+|-- HUONG_DAN_CAI_DAT.md
+`-- outputs/
+    |-- models/
+    |   |-- E6_MobileNetV2_subject.keras
+    |   `-- improved_mobilenetv2.keras
+    |-- results/improved_model_metadata.json
+    `-- tables/improved_subject_metrics.csv
 ```
 
-## Quick start
+## Run the application
 
-Use Python 3.11 and create a fresh virtual environment. Full Windows, macOS, Linux, training, and troubleshooting instructions are available in [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
-
-Run the Streamlit application on Windows:
+Use Python 3.11. Full setup instructions are in [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Run a quick pilot training pass:
+## Train and evaluate the improved pipeline
+
+First run the smoke test:
 
 ```powershell
-.\.venv\Scripts\python.exe run_local_notebook.py --force
+.\.venv\Scripts\python.exe train_improved_model.py --quick
 ```
 
-Run full training:
+Then run all images and the two-stage training schedule:
 
 ```powershell
-.\.venv\Scripts\python.exe run_local_notebook.py --full --force
+.\.venv\Scripts\python.exe train_improved_model.py
 ```
 
-## Model status
+The split is grouped by subject, so a person cannot occur in more than one of train, validation, and test. The threshold is selected on validation data only. Final reporting includes image-level and subject-macro accuracy, balanced accuracy, precision, recall, F1, ROC AUC, and a confusion matrix.
 
-The included `E6_MobileNetV2_subject.keras` model was produced by the E6 MobileNetV2 subject-wise experiment in `DDD_Drowsiness_Executed.ipynb`. It is currently a pilot/CPU artifact intended for coursework demonstration. Run full training before using the model for serious evaluation.
+Additional locally collected datasets can be included without mixing their subject identifiers with DDD:
 
-## Disclaimer
+```powershell
+.\.venv\Scripts\python.exe train_improved_model.py --extra-data "D:\data\my_driver_faces"
+```
 
-This project is an academic demonstration. It is not a certified road-safety device, medical diagnostic system, or production safety system.
+Keep the same `Drowsy` and `Non-Drowsy` directory naming convention. Collect consented data under realistic camera, lighting, glasses, head-pose, and driver-demographic conditions, and assign stable subject folders/identifiers.
+
+The app deploys `improved_mobilenetv2.keras` only when it came from a full run and achieved both test ROC AUC and balanced accuracy of at least 0.55 on unseen subjects. Otherwise it safely retains the included E6 fallback. A quick smoke-test model is never deployed.
+
+## Important limitation
+
+This remains an academic prototype. A face classifier cannot directly know whether someone is sleepy, and Haar eye detection is not a certified PERCLOS measurement. Validate on held-out drivers and real driving-like video before drawing conclusions. Do not use this project as a road-safety device, medical diagnostic system, or production alarm.

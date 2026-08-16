@@ -1,10 +1,12 @@
 """Realtime driver-drowsiness detection with the E6 MobileNetV2 model."""
 import csv
 import io
+import json
 from pathlib import Path
 from functools import lru_cache
 import threading
 import tempfile
+import time
 import zipfile
 
 import av
@@ -17,10 +19,42 @@ from PIL import Image, ImageDraw, ImageFont
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
+from drowsiness_temporal import TemporalDrowsinessTracker
+
 
 ROOT = Path(__file__).resolve().parent
-MODEL_PATH = ROOT / "outputs" / "models" / "E6_MobileNetV2_subject.keras"
-INPUT_SIZE = 96
+IMPROVED_MODEL_PATH = ROOT / "outputs" / "models" / "improved_mobilenetv2.keras"
+IMPROVED_METADATA_PATH = ROOT / "outputs" / "results" / "improved_model_metadata.json"
+FALLBACK_MODEL_PATH = ROOT / "outputs" / "models" / "E6_MobileNetV2_subject.keras"
+VIDEO_INFERENCE_VERSION = 3
+
+
+def resolve_model_artifact():
+    """Use the candidate only after a full run passes an unseen-subject gate."""
+    if IMPROVED_MODEL_PATH.exists() and IMPROVED_METADATA_PATH.exists():
+        try:
+            metadata = json.loads(IMPROVED_METADATA_PATH.read_text(encoding="utf-8"))
+            image_metrics = metadata.get("image_metrics", {})
+            subject_metrics = metadata.get("subject_macro_metrics", {})
+            candidate_is_deployable = metadata.get(
+                "deployable",
+                image_metrics.get("roc_auc", 0.0) >= 0.55
+                and image_metrics.get("balanced_accuracy", 0.0) >= 0.55
+                and subject_metrics.get("balanced_accuracy", 0.0) >= 0.55,
+            )
+            if not metadata.get("quick_run", True) and candidate_is_deployable:
+                return IMPROVED_MODEL_PATH, metadata
+        except (OSError, ValueError, TypeError):
+            pass
+    return FALLBACK_MODEL_PATH, {
+        "model_name": "MobileNetV2 E6 (mô hình cũ)",
+        "input_size": 96,
+        "recommended_threshold": 0.50,
+        "quick_run": False,
+    }
+
+
+MODEL_PATH, MODEL_METADATA = resolve_model_artifact()
 
 
 @lru_cache(maxsize=8)
@@ -63,17 +97,18 @@ def draw_unicode_text(image_bgr, text, position, color_bgr, font_size=24):
 st.set_page_config(
     page_title="Phân tích trạng thái buồn ngủ",
     page_icon=":material/visibility:",
-    layout="wide",
+    layout="centered",
 )
 
 
 @st.cache_resource(show_spinner="Đang nạp mô hình MobileNetV2…")
-def load_model():
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Không tìm thấy mô hình: {MODEL_PATH}")
-    # The notebook saved MobileNetV2 preprocessing inside a Lambda layer.
+def load_model(model_path):
+    model_path = Path(model_path)
+    if not model_path.exists():
+        raise FileNotFoundError(f"Không tìm thấy mô hình: {model_path}")
+    # custom_objects is only needed by the old E6 Lambda preprocessing layer.
     return tf.keras.models.load_model(
-        MODEL_PATH,
+        model_path,
         compile=False,
         custom_objects={"preprocess_input": preprocess_input},
         safe_mode=False,
@@ -86,25 +121,69 @@ def load_detector():
     return cv2.CascadeClassifier(path)
 
 
+@st.cache_resource
+def load_eye_detector():
+    """Load an independent detector used to confirm two visibly open eyes."""
+    path = cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml"
+    detector = cv2.CascadeClassifier(path)
+    if detector.empty():
+        raise FileNotFoundError(f"Không tìm thấy bộ phát hiện mắt: {path}")
+    return detector
+
+
 class DrowsinessProcessor(VideoProcessorBase):
-    def __init__(self, model, detector, threshold):
+    def __init__(
+        self,
+        model,
+        detector,
+        eye_detector,
+        threshold,
+        min_closed_seconds,
+        window_seconds,
+        closed_ratio_threshold,
+    ):
         self.model = model
         self.detector = detector
+        self.eye_detector = eye_detector
         self.threshold = threshold
+        self.tracker = TemporalDrowsinessTracker(
+            threshold,
+            min_closed_seconds=min_closed_seconds,
+            window_seconds=window_seconds,
+            closed_ratio_threshold=closed_ratio_threshold,
+        )
         self.lock = threading.Lock()
         self.last_probability = None
         self.last_face_count = 0
+        self.last_open_eye_count = 0
+        self.last_decision = None
 
     def recv(self, frame):
         image = frame.to_ndarray(format="bgr24")
         probability, face_count, face_box = predict_frame(
             image, self.model, self.detector
         )
-        image = draw_prediction(image, probability, face_box, self.threshold)
+        open_eye_count = count_open_eyes(image, face_box, self.eye_detector)
+        timestamp = float(frame.time) if frame.time is not None else time.monotonic()
+        decision = self.tracker.update(
+            timestamp,
+            probability,
+            open_eye_count,
+            face_detected=bool(face_count),
+        )
+        image = draw_prediction(
+            image,
+            probability,
+            face_box,
+            self.threshold,
+            temporal_decision=decision,
+        )
 
         with self.lock:
             self.last_probability = probability
             self.last_face_count = face_count
+            self.last_open_eye_count = open_eye_count
+            self.last_decision = decision
         return av.VideoFrame.from_ndarray(image, format="bgr24")
 
 
@@ -117,14 +196,63 @@ def predict_frame(image_bgr, model, detector):
 
     # Prefer the largest face when several people are in view.
     x, y, w, h = max(faces, key=lambda face: face[2] * face[3])
-    face_rgb = cv2.cvtColor(image_bgr[y:y + h, x:x + w], cv2.COLOR_BGR2RGB)
-    face_rgb = cv2.resize(face_rgb, (INPUT_SIZE, INPUT_SIZE))
+    # The training images are square face crops. Match that geometry at runtime
+    # and keep a small context margin instead of stretching a rectangular box.
+    center_x, center_y = x + w / 2, y + h / 2
+    side = max(w, h) * 1.10
+    crop_x1 = max(0, int(center_x - side / 2))
+    crop_y1 = max(0, int(center_y - side / 2))
+    crop_x2 = min(image_bgr.shape[1], int(center_x + side / 2))
+    crop_y2 = min(image_bgr.shape[0], int(center_y + side / 2))
+    face_rgb = cv2.cvtColor(
+        image_bgr[crop_y1:crop_y2, crop_x1:crop_x2], cv2.COLOR_BGR2RGB
+    )
+    input_size = int(model.input_shape[1])
+    face_rgb = cv2.resize(face_rgb, (input_size, input_size))
     batch = np.expand_dims(face_rgb.astype(np.float32), axis=0)
     probability = float(model(batch, training=False).numpy()[0, 0])
     return probability, len(faces), (x, y, w, h)
 
 
-def draw_prediction(image_bgr, probability, face_box, threshold):
+def count_open_eyes(image_bgr, face_box, eye_detector):
+    """Return how many sides of the upper face contain a detected open eye."""
+    if face_box is None:
+        return 0
+
+    x, y, w, h = face_box
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    top = y + int(0.12 * h)
+    bottom = y + int(0.62 * h)
+    eye_region = gray[top:bottom, x:x + w]
+    if eye_region.size == 0:
+        return 0
+
+    eye_region = cv2.equalizeHist(eye_region)
+    min_eye = max(12, int(w * 0.10))
+    max_eye = max(min_eye + 1, int(w * 0.40))
+    eyes = eye_detector.detectMultiScale(
+        eye_region,
+        scaleFactor=1.1,
+        minNeighbors=6,
+        minSize=(min_eye, min_eye),
+        maxSize=(max_eye, max_eye),
+    )
+
+    # Counting left/right sides is more stable than trusting every Haar box,
+    # because one eye can occasionally produce two overlapping detections.
+    left_eye = any(ex + ew / 2 < w / 2 for ex, _, ew, _ in eyes)
+    right_eye = any(ex + ew / 2 >= w / 2 for ex, _, ew, _ in eyes)
+    return int(left_eye) + int(right_eye)
+
+
+def draw_prediction(
+    image_bgr,
+    probability,
+    face_box,
+    threshold,
+    force_awake=False,
+    temporal_decision=None,
+):
     """Draw one prediction using a Vietnamese-capable Unicode font."""
     result = image_bgr.copy()
     if face_box is None:
@@ -136,9 +264,31 @@ def draw_prediction(image_bgr, probability, face_box, threshold):
         )
 
     x, y, w, h = face_box
-    drowsy = probability >= threshold
-    label = "CẢNH BÁO: BUỒN NGỦ" if drowsy else "TỈNH TÁO"
-    color = (0, 0, 255) if drowsy else (0, 190, 0)
+    if temporal_decision is not None:
+        drowsy = temporal_decision.alert
+    else:
+        drowsy = probability >= threshold and not force_awake
+    if drowsy:
+        label = "CẢNH BÁO: BUỒN NGỦ"
+    elif force_awake or (
+        temporal_decision is not None and temporal_decision.open_eye_count >= 2
+    ):
+        label = "TỈNH TÁO (PHÁT HIỆN MẮT MỞ)"
+    elif temporal_decision is not None and temporal_decision.closed_evidence:
+        label = "ĐANG THEO DÕI DẤU HIỆU"
+    else:
+        label = "TỈNH TÁO"
+    tracking = (
+        temporal_decision is not None
+        and temporal_decision.closed_evidence
+        and not drowsy
+    )
+    if drowsy:
+        color = (0, 0, 255)
+    elif tracking:
+        color = (0, 200, 255)
+    else:
+        color = (0, 190, 0)
     cv2.rectangle(result, (x, y), (x + w, y + h), color, 3)
     return draw_unicode_text(
         result,
@@ -148,11 +298,18 @@ def draw_prediction(image_bgr, probability, face_box, threshold):
     )
 
 
-def annotate_frame(image_bgr, model, detector, threshold):
+def annotate_frame(image_bgr, model, detector, eye_detector, threshold):
     """Detect the largest face and draw its prediction on one BGR frame."""
     probability, face_count, face_box = predict_frame(image_bgr, model, detector)
-    result = draw_prediction(image_bgr, probability, face_box, threshold)
-    return result, probability, face_count
+    open_eye_count = count_open_eyes(image_bgr, face_box, eye_detector)
+    result = draw_prediction(
+        image_bgr,
+        probability,
+        face_box,
+        threshold,
+        force_awake=open_eye_count >= 2,
+    )
+    return result, probability, face_count, open_eye_count
 
 
 def analyze_uploaded_video(
@@ -160,8 +317,12 @@ def analyze_uploaded_video(
     suffix,
     model,
     detector,
+    eye_detector,
     threshold,
     analysis_rate,
+    min_closed_seconds,
+    window_seconds,
+    closed_ratio_threshold,
     alert_interval,
     max_alert_images,
     progress_callback=None,
@@ -191,12 +352,20 @@ def analyze_uploaded_video(
         video_stream.pix_fmt = "yuv420p"
 
         sample_stride = max(1, round(fps / analysis_rate))
+        tracker = TemporalDrowsinessTracker(
+            threshold,
+            min_closed_seconds=min_closed_seconds,
+            window_seconds=window_seconds,
+            closed_ratio_threshold=closed_ratio_threshold,
+        )
         alert_snapshots = []
         probability_points = []
         total_frames = analyzed_frames = face_frames = alert_frames = 0
         last_snapshot_time = -alert_interval
         current_probability = None
         current_face_box = None
+        current_open_eye_count = 0
+        current_decision = None
         progress_step = max(1, expected_frames // 100) if expected_frames > 0 else 30
 
         while True:
@@ -212,10 +381,25 @@ def analyze_uploaded_video(
                 current_probability, face_count, current_face_box = predict_frame(
                     frame, model, detector
                 )
+                current_open_eye_count = count_open_eyes(
+                    frame, current_face_box, eye_detector
+                )
+                current_decision = tracker.update(
+                    timestamp,
+                    current_probability,
+                    current_open_eye_count,
+                    face_detected=bool(face_count),
+                )
                 if face_count:
                     face_frames += 1
-                    probability_points.append((timestamp, current_probability))
-                    if current_probability >= threshold:
+                    probability_points.append(
+                        (
+                            timestamp,
+                            current_probability,
+                            current_decision.rolling_closed_ratio,
+                        )
+                    )
+                    if current_decision.alert:
                         alert_frames += 1
                         can_save = timestamp - last_snapshot_time >= alert_interval
                         if can_save and len(alert_snapshots) < max_alert_images:
@@ -224,6 +408,7 @@ def analyze_uploaded_video(
                                 current_probability,
                                 current_face_box,
                                 threshold,
+                                temporal_decision=current_decision,
                             )
                             encoded, jpeg = cv2.imencode(
                                 ".jpg",
@@ -236,6 +421,10 @@ def analyze_uploaded_video(
                                         "frame_number": frame_number,
                                         "time_seconds": timestamp,
                                         "probability": current_probability,
+                                        "open_eye_count": current_open_eye_count,
+                                        "closed_ratio": current_decision.rolling_closed_ratio,
+                                        "closed_seconds": current_decision.consecutive_closed_seconds,
+                                        "reason": current_decision.reason,
                                         "image": jpeg.tobytes(),
                                     }
                                 )
@@ -246,6 +435,7 @@ def analyze_uploaded_video(
                 current_probability,
                 current_face_box,
                 threshold,
+                temporal_decision=current_decision,
             )
             video_frame = av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
             for packet in video_stream.encode(video_frame):
@@ -273,6 +463,11 @@ def analyze_uploaded_video(
             "alert_frames": alert_frames,
             "probability_points": probability_points,
             "alert_snapshots": alert_snapshots,
+            "temporal_settings": {
+                "min_closed_seconds": min_closed_seconds,
+                "window_seconds": window_seconds,
+                "closed_ratio_threshold": closed_ratio_threshold,
+            },
         }
     finally:
         if capture is not None:
@@ -288,7 +483,20 @@ def build_alert_archive(alert_snapshots, threshold):
     archive_buffer = io.BytesIO()
     csv_buffer = io.StringIO()
     writer = csv.writer(csv_buffer)
-    writer.writerow(["STT", "Tệp ảnh", "Khung hình", "Thời điểm (giây)", "Xác suất", "Ngưỡng"])
+    writer.writerow(
+        [
+            "STT",
+            "Tệp ảnh",
+            "Khung hình",
+            "Thời điểm (giây)",
+            "Điểm mô hình",
+            "Ngưỡng mô hình",
+            "Mắt mở",
+            "Tỷ lệ dấu hiệu nhắm mắt",
+            "Nhắm liên tục (giây)",
+            "Lý do cảnh báo",
+        ]
+    )
 
     with zipfile.ZipFile(archive_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for index, alert in enumerate(alert_snapshots, start=1):
@@ -305,6 +513,10 @@ def build_alert_archive(alert_snapshots, threshold):
                     f"{alert['time_seconds']:.2f}",
                     f"{alert['probability']:.6f}",
                     f"{threshold:.6f}",
+                    alert["open_eye_count"],
+                    f"{alert['closed_ratio']:.6f}",
+                    f"{alert['closed_seconds']:.2f}",
+                    alert["reason"],
                 ]
             )
         archive.writestr("bao_cao_canh_bao.csv", "\ufeff" + csv_buffer.getvalue())
@@ -322,11 +534,11 @@ def format_video_time(seconds):
 
 st.title("Phân tích trạng thái buồn ngủ của tài xế")
 st.caption(
-    "Nhận diện khuôn mặt bằng Haar Cascade và phân loại bằng MobileNetV2 (E6)"
+    "Kết hợp MobileNetV2, phát hiện mắt mở và xác nhận dấu hiệu theo thời gian"
 )
 st.markdown(
-    ":blue-badge[MobileNetV2 · E6] "
-    ":gray-badge[Đầu vào 96 × 96 px] "
+    f":blue-badge[{MODEL_METADATA['model_name']}] "
+    f":gray-badge[Đầu vào {MODEL_METADATA['input_size']} × {MODEL_METADATA['input_size']} px] "
     ":orange-badge[Mô hình thử nghiệm]"
 )
 
@@ -341,16 +553,50 @@ with st.container(border=True):
 
 with st.sidebar:
     st.markdown("### :material/tune: Cấu hình phân tích")
+    recommended_threshold = float(
+        MODEL_METADATA.get("recommended_threshold", 0.50)
+    )
+    recommended_threshold = min(0.90, max(0.10, recommended_threshold))
+    recommended_threshold = round(recommended_threshold / 0.05) * 0.05
     threshold = st.slider(
-        "Ngưỡng cảnh báo",
+        "Ngưỡng điểm mô hình",
         min_value=0.10,
         max_value=0.90,
-        value=0.50,
+        value=recommended_threshold,
         step=0.05,
         format="%.2f",
-        help="Mẫu có xác suất bằng hoặc lớn hơn ngưỡng sẽ được đánh dấu cảnh báo.",
+        help=(
+            "Đây chỉ là điều kiện đầu tiên. Video chỉ cảnh báo sau khi dấu hiệu "
+            "được duy trì đủ lâu hoặc xuất hiện với tỷ lệ cao trong cửa sổ thời gian. "
+            "Điểm từ 90% sẽ cảnh báo đỏ ngay nếu không phát hiện đủ hai mắt mở."
+        ),
     )
-    st.metric("Ngưỡng đang dùng", f"{threshold:.0%}")
+    st.metric("Ngưỡng mô hình đang dùng", f"{threshold:.0%}")
+
+    st.markdown("#### :material/timeline: Xác nhận theo thời gian")
+    min_closed_seconds = st.slider(
+        "Thời gian dấu hiệu liên tục (giây)",
+        min_value=0.5,
+        max_value=5.0,
+        value=1.5,
+        step=0.25,
+        help="Không cảnh báo từ một khung hình đơn lẻ.",
+    )
+    window_seconds = st.slider(
+        "Cửa sổ theo dõi (giây)",
+        min_value=3.0,
+        max_value=30.0,
+        value=10.0,
+        step=1.0,
+    )
+    closed_ratio_threshold = st.slider(
+        "Tỷ lệ dấu hiệu nhắm mắt trong cửa sổ",
+        min_value=0.20,
+        max_value=0.90,
+        value=0.40,
+        step=0.05,
+        format="%.2f",
+    )
 
     if mode == "Tải ảnh/video":
         st.divider()
@@ -387,8 +633,9 @@ with st.sidebar:
     )
 
 try:
-    model = load_model()
+    model = load_model(str(MODEL_PATH))
     detector = load_detector()
+    eye_detector = load_eye_detector()
 except Exception as exc:
     st.error(f"Không thể nạp mô hình: {exc}", icon=":material/error:")
     st.stop()
@@ -412,7 +659,13 @@ if mode == "Webcam":
             ctx = webrtc_streamer(
                 key="drowsiness-camera",
                 video_processor_factory=lambda: DrowsinessProcessor(
-                    model, detector, threshold
+                    model,
+                    detector,
+                    eye_detector,
+                    threshold,
+                    min_closed_seconds,
+                    window_seconds,
+                    closed_ratio_threshold,
                 ),
                 media_stream_constraints={"video": True, "audio": False},
                 async_processing=True,
@@ -421,13 +674,19 @@ if mode == "Webcam":
                 with ctx.video_processor.lock:
                     probability = ctx.video_processor.last_probability
                     face_count = ctx.video_processor.last_face_count
-                metric_columns = st.columns(3)
+                    open_eye_count = ctx.video_processor.last_open_eye_count
+                    decision = ctx.video_processor.last_decision
+                metric_columns = st.columns(4)
                 metric_columns[0].metric("Khuôn mặt", face_count)
                 metric_columns[1].metric(
-                    "Xác suất buồn ngủ",
+                    "Điểm mô hình",
                     "—" if probability is None else f"{probability:.1%}",
                 )
-                metric_columns[2].metric("Ngưỡng cảnh báo", f"{threshold:.0%}")
+                metric_columns[2].metric("Mắt mở", open_eye_count)
+                metric_columns[3].metric(
+                    "Tỷ lệ dấu hiệu",
+                    "—" if decision is None else f"{decision.rolling_closed_ratio:.1%}",
+                )
         else:
             st.caption(
                 "Nếu trình phát báo `NotFoundError: Requested device not found`, "
@@ -458,30 +717,38 @@ else:
             if image is None:
                 st.error("Không thể đọc ảnh đã tải lên.", icon=":material/error:")
             else:
-                annotated, probability, face_count = annotate_frame(
-                    image, model, detector, threshold
+                annotated, probability, face_count, open_eye_count = annotate_frame(
+                    image, model, detector, eye_detector, threshold
                 )
+                awake_by_eyes = open_eye_count >= 2
                 with st.container(border=True):
                     st.markdown("### :material/image_search: Kết quả phân tích ảnh")
                     if probability is None:
                         st.warning("Không phát hiện khuôn mặt trong ảnh.")
-                    elif probability >= threshold:
+                    elif probability >= threshold and not awake_by_eyes:
                         st.error(
-                            f"Cảnh báo buồn ngủ — xác suất {probability:.1%} "
+                            f"Cảnh báo buồn ngủ — điểm mô hình {probability:.1%} "
                             f"vượt ngưỡng {threshold:.0%}."
+                        )
+                    elif awake_by_eyes:
+                        st.success(
+                            f"Phát hiện đủ hai mắt mở — kết luận **tỉnh táo**. "
+                            f"Điểm thô MobileNetV2 là {probability:.1%} nhưng đã bị "
+                            "bộ kiểm tra mắt mở bác bỏ."
                         )
                     else:
                         st.success(
-                            f"Chưa vượt ngưỡng cảnh báo — xác suất {probability:.1%}."
+                            f"Chưa vượt ngưỡng cảnh báo — điểm mô hình {probability:.1%}."
                         )
 
-                    metric_columns = st.columns(3)
+                    metric_columns = st.columns(4)
                     metric_columns[0].metric("Khuôn mặt", face_count)
                     metric_columns[1].metric(
-                        "Xác suất buồn ngủ",
+                        "Điểm mô hình",
                         "—" if probability is None else f"{probability:.1%}",
                     )
-                    metric_columns[2].metric("Ngưỡng cảnh báo", f"{threshold:.0%}")
+                    metric_columns[2].metric("Mắt mở", open_eye_count)
+                    metric_columns[3].metric("Ngưỡng cảnh báo", f"{threshold:.0%}")
 
                     image_columns = st.columns(2)
                     image_columns[0].image(
@@ -494,10 +761,14 @@ else:
         else:
             video_bytes = upload.getvalue()
             analysis_key = (
+                VIDEO_INFERENCE_VERSION,
                 upload.name,
                 upload.size,
                 threshold,
                 analysis_rate,
+                min_closed_seconds,
+                window_seconds,
+                closed_ratio_threshold,
                 alert_interval,
                 max_alert_images,
             )
@@ -509,7 +780,8 @@ else:
                 st.markdown("### :material/tune: Thiết lập xử lý video")
                 st.caption(
                     f"Phân tích {analysis_rate} mẫu/giây · lưu ảnh cách nhau tối thiểu "
-                    f"{alert_interval:g} giây · tối đa {max_alert_images} ảnh"
+                    f"{alert_interval:g} giây · xác nhận liên tục {min_closed_seconds:g} giây · "
+                    f"cửa sổ {window_seconds:g} giây"
                 )
                 analyze_clicked = st.button(
                     "Phân tích video và tách ảnh cảnh báo",
@@ -535,8 +807,12 @@ else:
                         Path(upload.name).suffix,
                         model,
                         detector,
+                        eye_detector,
                         threshold,
                         analysis_rate,
+                        min_closed_seconds,
+                        window_seconds,
+                        closed_ratio_threshold,
                         alert_interval,
                         max_alert_images,
                         update_progress,
@@ -567,7 +843,7 @@ else:
                     )
                     st.caption("Video gốc chưa gắn thông tin nhận dạng.")
                 with video_columns[1]:
-                    st.markdown("#### Video nhận dạng và xác suất")
+                    st.markdown("#### Video nhận dạng và điểm mô hình")
                     if analysis_is_current:
                         st.video(
                             analysis["processed_video"],
@@ -575,7 +851,9 @@ else:
                             width="stretch",
                         )
                         st.caption(
-                            "Khung xanh: tỉnh táo · khung đỏ: vượt ngưỡng cảnh báo."
+                            "Khung vàng: đang theo dõi · khung đỏ: dấu hiệu đã kéo dài "
+                            "đủ điều kiện cảnh báo; điểm từ 90% chuyển đỏ ngay nếu "
+                            "không phát hiện đủ hai mắt mở."
                         )
                         st.download_button(
                             "Tải video nhận dạng",
@@ -587,7 +865,7 @@ else:
                     else:
                         st.info(
                             "Nhấn **Phân tích video và tách ảnh cảnh báo** để tạo "
-                            "video nhận dạng có xác suất."
+                            "video nhận dạng có điểm mô hình."
                         )
 
             if analysis_is_current:
@@ -598,8 +876,8 @@ else:
                     st.markdown("### :material/analytics: Tổng quan kết quả")
                     if analysis["alert_frames"]:
                         st.error(
-                            f"Phát hiện {analysis['alert_frames']:,} mẫu vượt ngưỡng "
-                            f"{threshold:.0%}; đã tách {len(snapshots):,} ảnh đại diện."
+                            f"Phát hiện {analysis['alert_frames']:,} mẫu đã thỏa điều kiện "
+                            f"thời gian; đã tách {len(snapshots):,} ảnh đại diện."
                         )
                     elif analysis["face_frames"]:
                         st.success("Không có mẫu nào vượt ngưỡng cảnh báo đã chọn.")
@@ -615,7 +893,7 @@ else:
                         "Mẫu đã phân tích", f"{analysis['analyzed_frames']:,}"
                     )
                     metric_columns[2].metric(
-                        "Mẫu vượt ngưỡng", f"{analysis['alert_frames']:,}"
+                        "Mẫu cảnh báo thời gian", f"{analysis['alert_frames']:,}"
                     )
                     alert_rate = (
                         analysis["alert_frames"] / analysis["face_frames"]
@@ -630,26 +908,58 @@ else:
                         chart_points = points[::point_stride]
                         chart_data = pd.DataFrame(
                             chart_points,
-                            columns=["Thời gian (giây)", "Xác suất buồn ngủ"],
+                            columns=[
+                                "Thời gian (giây)",
+                                "Điểm mô hình",
+                                "Tỷ lệ dấu hiệu nhắm mắt",
+                            ],
                         )
-                        chart_data["Ngưỡng cảnh báo"] = threshold
-                        st.markdown("#### Diễn biến xác suất theo thời gian")
+                        chart_data["Ngưỡng mô hình"] = threshold
+                        chart_data["Ngưỡng tỷ lệ"] = closed_ratio_threshold
+                        st.markdown("#### Diễn biến tín hiệu theo thời gian")
                         st.line_chart(
                             chart_data,
                             x="Thời gian (giây)",
-                            y=["Xác suất buồn ngủ", "Ngưỡng cảnh báo"],
-                            y_label="Xác suất",
+                            y=[
+                                "Điểm mô hình",
+                                "Tỷ lệ dấu hiệu nhắm mắt",
+                                "Ngưỡng mô hình",
+                                "Ngưỡng tỷ lệ",
+                            ],
+                            y_label="Điểm / tỷ lệ",
                             height=320,
                         )
 
-                if snapshots:
-                    with st.container(border=True):
-                        st.markdown("### :material/warning: Ảnh cảnh báo đã tách")
-                        st.caption(
-                            "Mỗi ảnh được gắn thời điểm và xác suất. Khoảng cách lấy ảnh "
-                            "giúp loại bớt các khung hình gần như trùng nhau."
-                        )
+                with st.container(border=True):
+                    st.markdown("### :material/photo_library: Kết quả ảnh buồn ngủ")
+                    st.caption(
+                        "Các khung hình đã thỏa điều kiện cảnh báo theo thời gian "
+                        "được tách từ video và hiển thị ngay bên dưới biểu đồ."
+                    )
 
+                    if not snapshots:
+                        st.info(
+                            "Chưa có khung hình nào thỏa điều kiện để tách ảnh. "
+                            "Bạn có thể điều chỉnh ngưỡng hoặc thời gian xác nhận rồi phân tích lại."
+                        )
+                    else:
+                        gallery_columns = st.columns(3, gap="medium")
+                        for index, alert in enumerate(snapshots):
+                            with gallery_columns[index % 3]:
+                                with st.container(border=True):
+                                    st.image(
+                                        alert["image"],
+                                        caption=(
+                                            f"#{index + 1:02d} · "
+                                            f"{format_video_time(alert['time_seconds'])} · "
+                                            f"điểm {alert['probability']:.1%} · "
+                                            f"tỷ lệ {alert['closed_ratio']:.1%}"
+                                        ),
+                                        width="stretch",
+                                    )
+
+                        st.divider()
+                        st.markdown("#### Chi tiết và tải kết quả")
                         alert_table = pd.DataFrame(
                             [
                                 {
@@ -658,7 +968,11 @@ else:
                                     "Thời điểm": format_video_time(
                                         alert["time_seconds"]
                                     ),
-                                    "Xác suất": alert["probability"],
+                                    "Điểm mô hình": alert["probability"],
+                                    "Mắt mở": alert["open_eye_count"],
+                                    "Tỷ lệ nhắm": alert["closed_ratio"],
+                                    "Nhắm liên tục": alert["closed_seconds"],
+                                    "Lý do": alert["reason"],
                                 }
                                 for index, alert in enumerate(snapshots, start=1)
                             ]
@@ -667,12 +981,21 @@ else:
                             alert_table,
                             hide_index=True,
                             column_config={
-                                "Xác suất": st.column_config.ProgressColumn(
-                                    "Xác suất buồn ngủ",
+                                "Điểm mô hình": st.column_config.ProgressColumn(
+                                    "Điểm mô hình",
                                     min_value=0.0,
                                     max_value=1.0,
                                     format="percent",
-                                )
+                                ),
+                                "Tỷ lệ nhắm": st.column_config.ProgressColumn(
+                                    "Tỷ lệ dấu hiệu nhắm mắt",
+                                    min_value=0.0,
+                                    max_value=1.0,
+                                    format="percent",
+                                ),
+                                "Nhắm liên tục": st.column_config.NumberColumn(
+                                    "Nhắm liên tục (giây)", format="%.2f"
+                                ),
                             },
                             key="alert_table",
                         )
@@ -687,24 +1010,11 @@ else:
                             type="primary",
                         )
 
-                        st.markdown("#### Thư viện ảnh")
-                        gallery_columns = st.columns(3)
-                        for index, alert in enumerate(snapshots):
-                            with gallery_columns[index % 3]:
-                                with st.container(border=True):
-                                    st.image(
-                                        alert["image"],
-                                        caption=(
-                                            f"#{index + 1:02d} · "
-                                            f"{format_video_time(alert['time_seconds'])} · "
-                                            f"{alert['probability']:.1%}"
-                                        ),
-                                    )
-
 st.divider()
 st.markdown("#### :material/info: Phạm vi sử dụng")
 st.caption(
-    "Nhãn cảnh báo biểu thị xác suất của mô hình, không phải chẩn đoán y tế. "
+    "Điểm mô hình không phải xác suất đã được hiệu chỉnh hay chẩn đoán y tế. "
+    "Cảnh báo video chỉ xuất hiện sau khi tín hiệu được xác nhận theo thời gian. "
     "Khi có nhiều người, hệ thống chỉ phân tích khuôn mặt lớn nhất. Video tải lên "
     "tối đa 200 MB; thời gian xử lý phụ thuộc độ dài video và tần suất lấy mẫu."
 )

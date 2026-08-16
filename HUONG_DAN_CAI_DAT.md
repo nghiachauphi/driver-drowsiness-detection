@@ -181,6 +181,39 @@ Chỉ cần huấn luyện lại trong các trường hợp sau:
 
 ## 6. Huấn luyện lại trên máy mới (không bắt buộc)
 
+### 6.0. Pipeline cải tiến nên dùng
+
+Pipeline mới nằm trong `train_improved_model.py`. Khác với lượt thử E1-E6 cũ, pipeline này:
+
+- chia train/validation/test theo người bằng `StratifiedGroupKFold`, không để ảnh của cùng một người lọt sang nhiều tập;
+- chọn ngưỡng cảnh báo bằng validation, tuyệt đối không chọn bằng test;
+- tăng cường dữ liệu về lật ngang, xoay, zoom, độ sáng và tương phản;
+- huấn luyện MobileNetV2 hai giai đoạn, có class weight, label smoothing và early stopping;
+- báo cáo cả chỉ số theo ảnh và trung bình theo từng người;
+- chỉ cho Streamlit dùng mô hình mới nếu lượt train đầy đủ đạt ROC AUC và balanced accuracy tối thiểu 0,55 trên test gồm những người chưa thấy khi train.
+
+Chạy kiểm tra nhanh để phát hiện lỗi môi trường (mô hình tạo ra ở bước này không được triển khai):
+
+```powershell
+.\.venv\Scripts\python.exe train_improved_model.py --quick
+```
+
+Chạy huấn luyện đầy đủ:
+
+```powershell
+.\.venv\Scripts\python.exe train_improved_model.py
+```
+
+Nếu có bộ ảnh tự thu thập đã được đồng ý sử dụng, sắp xếp theo thư mục `Drowsy`/`Non-Drowsy` và thêm bằng:
+
+```powershell
+.\.venv\Scripts\python.exe train_improved_model.py --extra-data "D:\du_lieu\tai_xe_cua_toi"
+```
+
+Nên thu nhiều người, ánh sáng, góc đầu, kính, loại camera và trạng thái thật. Không nên chỉ tăng số khung hình gần như giống nhau từ một vài video vì điều đó làm chỉ số theo ảnh cao giả tạo mà không cải thiện khả năng nhận người mới.
+
+Kết quả mới được ghi vào `outputs/models/improved_mobilenetv2.keras`, `outputs/results/improved_model_metadata.json` và `outputs/tables/improved_subject_metrics.csv`. Khởi động lại Streamlit sau khi train để nạp lại model. Nếu mô hình không vượt cổng chất lượng, ứng dụng tự giữ E6 và kết hợp kiểm tra mắt cùng suy luận theo thời gian.
+
 Script sử dụng dataset Kaggle `ismailnasri20/driver-drowsiness-dataset-ddd`. Nếu không truyền đường dẫn dataset, KaggleHub sẽ tải dataset công khai vào cache của người dùng hoặc dùng lại bản đã tải trước đó.
 
 ### 6.1. Chạy thử pilot trước
