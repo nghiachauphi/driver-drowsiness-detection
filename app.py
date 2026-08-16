@@ -1,4 +1,5 @@
 """Realtime driver-drowsiness detection with the E6 MobileNetV2 model."""
+import faulthandler
 import os
 
 # Streamlit Community Cloud uses a shared, resource-limited Linux CPU. Configure
@@ -8,6 +9,12 @@ os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "1")
 os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
+
+# Native ML/video wheels can terminate Python before Streamlit can display an
+# exception. This makes a future cloud log include the active Python stack.
+faulthandler.enable(all_threads=True)
+print("[startup] Python runtime initialized", flush=True)
 
 import csv
 import io
@@ -19,12 +26,18 @@ import tempfile
 import time
 import zipfile
 
+print("[startup] Importing PyAV", flush=True)
 import av
+print("[startup] Imported PyAV", flush=True)
+print("[startup] Importing OpenCV", flush=True)
 import cv2
+print("[startup] Imported OpenCV", flush=True)
 import numpy as np
 import pandas as pd
 import streamlit as st
+print("[startup] Importing TensorFlow", flush=True)
 import tensorflow as tf
+print(f"[startup] Imported TensorFlow {tf.__version__}", flush=True)
 from PIL import Image, ImageDraw, ImageFont
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
@@ -117,12 +130,15 @@ def load_model(model_path):
     if not model_path.exists():
         raise FileNotFoundError(f"Không tìm thấy mô hình: {model_path}")
     # custom_objects is only needed by the old E6 Lambda preprocessing layer.
-    return tf.keras.models.load_model(
+    print(f"[startup] Loading model: {model_path.name}", flush=True)
+    loaded_model = tf.keras.models.load_model(
         model_path,
         compile=False,
         custom_objects={"preprocess_input": preprocess_input},
         safe_mode=False,
     )
+    print(f"[startup] Loaded model: {model_path.name}", flush=True)
+    return loaded_model
 
 
 @st.cache_resource
@@ -643,9 +659,11 @@ with st.sidebar:
     )
 
 try:
+    print("[startup] Initializing inference resources", flush=True)
     model = load_model(str(MODEL_PATH))
     detector = load_detector()
     eye_detector = load_eye_detector()
+    print("[startup] Inference resources ready", flush=True)
 except Exception as exc:
     st.error(f"Không thể nạp mô hình: {exc}", icon=":material/error:")
     st.stop()
