@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parent
 IMPROVED_MODEL_PATH = ROOT / "outputs" / "models" / "improved_mobilenetv2.keras"
 IMPROVED_METADATA_PATH = ROOT / "outputs" / "results" / "improved_model_metadata.json"
 FALLBACK_MODEL_PATH = ROOT / "outputs" / "models" / "E6_MobileNetV2_subject.keras"
-VIDEO_INFERENCE_VERSION = 4
+VIDEO_INFERENCE_VERSION = 5
 
 
 def resolve_model_artifact():
@@ -98,7 +98,9 @@ def load_unicode_font(size):
     try:
         return ImageFont.truetype("DejaVuSans.ttf", size=size)
     except OSError:
-        return ImageFont.load_default()
+        # Pillow's unscaled default is only about 10 px, which made labels tiny
+        # on minimal Linux images such as Streamlit Community Cloud.
+        return ImageFont.load_default(size=size)
 
 
 def draw_unicode_text(image_bgr, text, position, color_bgr, font_size=24):
