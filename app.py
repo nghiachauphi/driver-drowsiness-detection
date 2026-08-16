@@ -19,11 +19,15 @@ print("[startup] Python runtime initialized", flush=True)
 import csv
 import io
 import json
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from functools import lru_cache
+import re
 import threading
 import tempfile
 import time
+import traceback
+import uuid
 import zipfile
 
 print("[startup] Importing PyAV", flush=True)
@@ -103,6 +107,101 @@ def get_secret_value(name):
     return str(value).strip()
 
 
+def package_version(name):
+    """Return a package version for diagnostics without failing the app."""
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "not-installed"
+
+
+def diagnostic_session_id():
+    """Return a short random ID that correlates logs from one browser session."""
+    return st.session_state.get("_diagnostic_session_id", "startup")
+
+
+def log_diagnostic(event, **fields):
+    """Write a structured diagnostic event to Streamlit Cloud logs."""
+    payload = json.dumps(fields, ensure_ascii=False, default=str)
+    print(
+        f"[webrtc][session={diagnostic_session_id()}] {event} {payload}",
+        flush=True,
+    )
+
+
+def log_diagnostic_once(key, event, **fields):
+    """Avoid repeating the same large diagnostic event on every rerun."""
+    state_key = f"_diagnostic_logged_{key}"
+    if st.session_state.get(state_key):
+        return
+    st.session_state[state_key] = True
+    log_diagnostic(event, **fields)
+
+
+def redact_diagnostic_text(value, *secrets_to_hide):
+    """Remove account identifiers and credentials before writing a traceback."""
+    text = str(value)
+    for secret_value in secrets_to_hide:
+        if secret_value:
+            text = text.replace(str(secret_value), "<redacted-secret>")
+    text = re.sub(r"\bAC[A-Za-z0-9]{32}\b", "AC<redacted>", text)
+    return text[:8000]
+
+
+def summarize_ice_servers(ice_servers):
+    """List ICE endpoints while excluding usernames and credentials."""
+    endpoints = []
+    for server in ice_servers:
+        urls = server.get("urls", []) if isinstance(server, dict) else []
+        if isinstance(urls, str):
+            urls = [urls]
+        for url in urls:
+            safe_url = str(url)
+            if "@" in safe_url:
+                safe_url = safe_url.split("@", 1)[1]
+            endpoints.append(safe_url[:240])
+    return endpoints
+
+
+def log_client_environment(turn_provider, ice_servers):
+    """Log browser/runtime context useful for diagnosing WebRTC connection issues."""
+    try:
+        headers = st.context.headers
+        user_agent = headers.get("User-Agent", "unknown")
+        origin = headers.get("Origin", "unknown")
+    except Exception:
+        user_agent = "unknown"
+        origin = "unknown"
+
+    log_diagnostic_once(
+        "client_environment",
+        "client_environment",
+        user_agent=redact_diagnostic_text(user_agent),
+        origin=redact_diagnostic_text(origin),
+        locale=getattr(st.context, "locale", None),
+        timezone=getattr(st.context, "timezone", None),
+        embedded=getattr(st.context, "is_embedded", None),
+        turn_provider=turn_provider or "STUN-only",
+        ice_endpoints=summarize_ice_servers(ice_servers),
+        streamlit=package_version("streamlit"),
+        streamlit_webrtc=package_version("streamlit-webrtc"),
+        aiortc=package_version("aiortc"),
+        twilio=package_version("twilio"),
+    )
+
+
+def log_webrtc_state_change():
+    """Log signalling transitions emitted by the streamlit-webrtc component."""
+    context = st.session_state.get("drowsiness-camera")
+    state = getattr(context, "state", None)
+    log_diagnostic(
+        "state_change",
+        signalling=getattr(state, "signalling", None),
+        playing=getattr(state, "playing", None),
+        worker_created=bool(getattr(context, "video_processor", None)),
+    )
+
+
 def resolve_ice_servers():
     """Resolve TURN while preserving provider-specific failure details."""
     google_stun = [{"urls": "stun:stun.l.google.com:19302"}]
@@ -111,6 +210,20 @@ def resolve_ice_servers():
     twilio_sid = get_secret_value("TWILIO_ACCOUNT_SID")
     twilio_token = get_secret_value("TWILIO_AUTH_TOKEN")
     twilio_configured = bool(twilio_sid or twilio_token)
+    hf_token = get_secret_value("HF_TOKEN")
+    hf_configured = bool(hf_token)
+
+    log_diagnostic_once(
+        "turn_configuration",
+        "turn_configuration",
+        twilio_sid_present=bool(twilio_sid),
+        twilio_sid_length=len(twilio_sid),
+        twilio_sid_format_valid=twilio_sid.startswith("AC")
+        and len(twilio_sid) == 34,
+        twilio_auth_token_present=bool(twilio_token),
+        twilio_auth_token_length=len(twilio_token),
+        hf_token_present=hf_configured,
+    )
 
     if twilio_configured:
         if not twilio_sid or not twilio_token:
@@ -139,6 +252,12 @@ def resolve_ice_servers():
             try:
                 ice_servers = get_twilio_ice_servers(twilio_sid, twilio_token)
                 if contains_turn_server(ice_servers):
+                    log_diagnostic_once(
+                        "twilio_success",
+                        "turn_ready",
+                        provider="Twilio",
+                        ice_endpoints=summarize_ice_servers(ice_servers),
+                    )
                     return ice_servers, "Twilio", errors, True
                 errors.append(
                     ("Twilio", "Twilio trả về cấu hình không có máy chủ TURN.")
@@ -146,10 +265,21 @@ def resolve_ice_servers():
             except Exception as exc:
                 status = getattr(exc, "status", None)
                 code = getattr(exc, "code", None)
-                print(
-                    "[turn] Twilio request failed: "
-                    f"{type(exc).__name__}, status={status}, code={code}",
-                    flush=True,
+                safe_message = redact_diagnostic_text(
+                    exc, twilio_sid, twilio_token
+                )
+                safe_traceback = redact_diagnostic_text(
+                    traceback.format_exc(), twilio_sid, twilio_token
+                )
+                log_diagnostic_once(
+                    f"twilio_failure_{status}_{code}_{type(exc).__name__}",
+                    "turn_request_failed",
+                    provider="Twilio",
+                    exception_type=type(exc).__name__,
+                    http_status=status,
+                    error_code=code,
+                    message=safe_message,
+                    traceback=safe_traceback,
                 )
                 if status in (401, 403):
                     detail = (
@@ -163,17 +293,25 @@ def resolve_ice_servers():
                     )
                 errors.append(("Twilio", detail))
 
-    hf_token = get_secret_value("HF_TOKEN")
-    hf_configured = bool(hf_token)
     if hf_configured:
         try:
             ice_servers = get_hf_ice_servers(hf_token) + google_stun
             if contains_turn_server(ice_servers):
+                log_diagnostic_once(
+                    "hf_success",
+                    "turn_ready",
+                    provider="Hugging Face",
+                    ice_endpoints=summarize_ice_servers(ice_servers),
+                )
                 return ice_servers, "Hugging Face", errors, True
         except Exception as exc:
-            print(
-                f"[turn] Hugging Face request failed: {type(exc).__name__}",
-                flush=True,
+            log_diagnostic_once(
+                f"hf_failure_{type(exc).__name__}",
+                "turn_request_failed",
+                provider="Hugging Face",
+                exception_type=type(exc).__name__,
+                message=redact_diagnostic_text(exc, hf_token),
+                traceback=redact_diagnostic_text(traceback.format_exc(), hf_token),
             )
             errors.append(
                 ("Hugging Face", "Dịch vụ TURN dự phòng hiện không phản hồi.")
@@ -838,6 +976,7 @@ except Exception as exc:
 
 st.session_state.setdefault("video_analysis", None)
 st.session_state.setdefault("video_analysis_key", None)
+st.session_state.setdefault("_diagnostic_session_id", uuid.uuid4().hex[:8])
 
 if mode == "Webcam":
     with st.container(border=True):
@@ -872,6 +1011,11 @@ if mode == "Webcam":
             help="Chỉ bật sau khi webcam đã được kết nối và được Windows nhận.",
         )
         if camera_enabled:
+            st.caption(
+                "Mã phiên chẩn đoán: "
+                f"`{diagnostic_session_id()}` — dùng mã này để tìm log của đúng người dùng."
+            )
+            log_client_environment(turn_provider, ice_servers)
             ctx = webrtc_streamer(
                 key="drowsiness-camera",
                 video_processor_factory=lambda: DrowsinessProcessor(
@@ -888,6 +1032,14 @@ if mode == "Webcam":
                     "iceServers": ice_servers,
                 },
                 async_processing=True,
+                on_change=log_webrtc_state_change,
+            )
+            log_diagnostic_once(
+                "component_initialized",
+                "component_initialized",
+                signalling=ctx.state.signalling,
+                playing=ctx.state.playing,
+                worker_created=bool(ctx.video_processor),
             )
             if ctx.video_processor:
                 with ctx.video_processor.lock:
