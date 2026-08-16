@@ -756,24 +756,30 @@ if mode == "Webcam":
             "Bật webcam, cấp quyền camera cho trang này, sau đó nhấn **START**. "
             "Ảnh cảnh báo tách riêng hiện áp dụng cho video tải lên."
         )
-        turn_configured = bool(os.getenv("HF_TOKEN"))
+        twilio_configured = bool(
+            os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")
+        )
+        hf_configured = bool(os.getenv("HF_TOKEN"))
+        turn_configured = twilio_configured or hf_configured
         ice_servers = get_available_ice_servers()
         turn_ready = contains_turn_server(ice_servers)
         if turn_ready:
+            turn_provider = "Twilio" if twilio_configured else "Hugging Face"
             st.success(
-                "TURN đã sẵn sàng cho kết nối webcam trên Cloud.",
+                f"TURN {turn_provider} đã sẵn sàng cho webcam trên Cloud.",
                 icon=":material/cloud_done:",
             )
         elif turn_configured:
             st.error(
-                "Đã nhận `HF_TOKEN` nhưng không lấy được máy chủ TURN. "
-                "Hãy kiểm tra token, xem log Cloud và reboot app.",
+                "Đã nhận thông tin TURN nhưng không lấy được máy chủ. "
+                "Dịch vụ Hugging Face TURN có thể đang gián đoạn; "
+                "nên dùng Twilio, kiểm tra Secrets rồi reboot app.",
                 icon=":material/cloud_off:",
             )
         else:
             st.caption(
                 ":material/info: Bản Streamlit Cloud hiện chỉ có STUN. "
-                "Nếu kết nối bị chờ lâu, hãy thêm `HF_TOKEN` vào "
+                "Nếu kết nối bị chờ lâu, hãy thêm thông tin Twilio vào "
                 "**Manage app → Settings → Secrets** để bật TURN."
             )
         camera_enabled = st.toggle(
