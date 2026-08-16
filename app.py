@@ -1,4 +1,14 @@
 """Realtime driver-drowsiness detection with the E6 MobileNetV2 model."""
+import os
+
+# Streamlit Community Cloud uses a shared, resource-limited Linux CPU. Configure
+# TensorFlow before importing it to avoid native oneDNN/thread-pool crashes.
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "1")
+os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
+
 import csv
 import io
 import json
