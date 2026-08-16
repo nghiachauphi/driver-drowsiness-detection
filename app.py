@@ -40,7 +40,7 @@ import tensorflow as tf
 print(f"[startup] Imported TensorFlow {tf.__version__}", flush=True)
 from PIL import Image, ImageDraw, ImageFont
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
-from streamlit_webrtc.credentials import get_available_ice_servers
+from streamlit_webrtc.credentials import get_hf_ice_servers, get_twilio_ice_servers
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 from drowsiness_temporal import TemporalDrowsinessTracker
@@ -90,6 +90,96 @@ def contains_turn_server(ice_servers):
         if any(str(url).lower().startswith(("turn:", "turns:")) for url in urls):
             return True
     return False
+
+
+def get_secret_value(name):
+    """Read a credential from Streamlit Secrets or the process environment."""
+    value = os.getenv(name, "")
+    if not value:
+        try:
+            value = st.secrets.get(name, "")
+        except Exception:
+            value = ""
+    return str(value).strip()
+
+
+def resolve_ice_servers():
+    """Resolve TURN while preserving provider-specific failure details."""
+    google_stun = [{"urls": "stun:stun.l.google.com:19302"}]
+    errors = []
+
+    twilio_sid = get_secret_value("TWILIO_ACCOUNT_SID")
+    twilio_token = get_secret_value("TWILIO_AUTH_TOKEN")
+    twilio_configured = bool(twilio_sid or twilio_token)
+
+    if twilio_configured:
+        if not twilio_sid or not twilio_token:
+            missing = (
+                "TWILIO_ACCOUNT_SID" if not twilio_sid else "TWILIO_AUTH_TOKEN"
+            )
+            errors.append(("Twilio", f"Thiếu `{missing}` trong Streamlit Secrets."))
+        elif not twilio_sid.startswith("AC") or len(twilio_sid) != 34:
+            errors.append(
+                (
+                    "Twilio",
+                    "Account SID không hợp lệ; SID phải bắt đầu bằng `AC` và có 34 ký tự.",
+                )
+            )
+        elif any(
+            marker in twilio_token.lower()
+            for marker in ("token_thuc_te", "your_auth_token", "xxxxxxxx")
+        ):
+            errors.append(
+                (
+                    "Twilio",
+                    "Auth Token vẫn là giá trị minh họa, chưa phải token thật từ Twilio Console.",
+                )
+            )
+        else:
+            try:
+                ice_servers = get_twilio_ice_servers(twilio_sid, twilio_token)
+                if contains_turn_server(ice_servers):
+                    return ice_servers, "Twilio", errors, True
+                errors.append(
+                    ("Twilio", "Twilio trả về cấu hình không có máy chủ TURN.")
+                )
+            except Exception as exc:
+                status = getattr(exc, "status", None)
+                code = getattr(exc, "code", None)
+                print(
+                    "[turn] Twilio request failed: "
+                    f"{type(exc).__name__}, status={status}, code={code}",
+                    flush=True,
+                )
+                if status in (401, 403):
+                    detail = (
+                        "Twilio từ chối xác thực. Hãy sao chép lại **Account SID** và "
+                        "**Auth Token chính** (không phải API Key Secret), rồi reboot app."
+                    )
+                else:
+                    detail = (
+                        "Không gọi được API cấp TURN của Twilio. Hãy xem Cloud logs để "
+                        "kiểm tra mã lỗi, sau đó reboot app."
+                    )
+                errors.append(("Twilio", detail))
+
+    hf_token = get_secret_value("HF_TOKEN")
+    hf_configured = bool(hf_token)
+    if hf_configured:
+        try:
+            ice_servers = get_hf_ice_servers(hf_token) + google_stun
+            if contains_turn_server(ice_servers):
+                return ice_servers, "Hugging Face", errors, True
+        except Exception as exc:
+            print(
+                f"[turn] Hugging Face request failed: {type(exc).__name__}",
+                flush=True,
+            )
+            errors.append(
+                ("Hugging Face", "Dịch vụ TURN dự phòng hiện không phản hồi.")
+            )
+
+    return google_stun, None, errors, twilio_configured or hf_configured
 
 
 @lru_cache(maxsize=8)
@@ -756,26 +846,20 @@ if mode == "Webcam":
             "Bật webcam, cấp quyền camera cho trang này, sau đó nhấn **START**. "
             "Ảnh cảnh báo tách riêng hiện áp dụng cho video tải lên."
         )
-        twilio_configured = bool(
-            os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")
+        ice_servers, turn_provider, turn_errors, turn_configured = (
+            resolve_ice_servers()
         )
-        hf_configured = bool(os.getenv("HF_TOKEN"))
-        turn_configured = twilio_configured or hf_configured
-        ice_servers = get_available_ice_servers()
-        turn_ready = contains_turn_server(ice_servers)
-        if turn_ready:
-            turn_provider = "Twilio" if twilio_configured else "Hugging Face"
+        if turn_provider:
             st.success(
                 f"TURN {turn_provider} đã sẵn sàng cho webcam trên Cloud.",
                 icon=":material/cloud_done:",
             )
         elif turn_configured:
-            st.error(
-                "Đã nhận thông tin TURN nhưng không lấy được máy chủ. "
-                "Dịch vụ Hugging Face TURN có thể đang gián đoạn; "
-                "nên dùng Twilio, kiểm tra Secrets rồi reboot app.",
-                icon=":material/cloud_off:",
-            )
+            for provider, detail in turn_errors:
+                st.error(
+                    f"**{provider}:** {detail}",
+                    icon=":material/cloud_off:",
+                )
         else:
             st.caption(
                 ":material/info: Bản Streamlit Cloud hiện chỉ có STUN. "
