@@ -120,15 +120,29 @@ def draw_unicode_text(image_bgr, text, position, color_bgr, font_size=24):
 st.set_page_config(
     page_title="Phân tích trạng thái buồn ngủ",
     page_icon=":material/visibility:",
-    layout="centered",
+    layout="wide",
 )
 
 st.html(
     """
     <style>
+    [data-testid="stMainBlockContainer"] {
+        max-width: 1180px;
+        padding-top: 2rem;
+        padding-bottom: 2.5rem;
+    }
+
     .st-key-image-result-success [data-testid="stAlert"] p {
         font-size: 1.075rem;
         line-height: 1.55;
+    }
+
+    @media (max-width: 900px) {
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 1.25rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
     }
     </style>
     """
@@ -569,24 +583,30 @@ def format_video_time(seconds):
     return f"{int(minutes):02d}:{secs:04.1f}"
 
 
-st.title("Phân tích trạng thái buồn ngủ của tài xế")
-st.caption(
-    "Kết hợp MobileNetV2, phát hiện mắt mở và xác nhận dấu hiệu theo thời gian"
+header_content, header_source = st.columns(
+    [2.35, 1], gap="large", vertical_alignment="bottom"
 )
-st.markdown(
-    f":blue-badge[{MODEL_METADATA['model_name']}] "
-    f":gray-badge[Đầu vào {MODEL_METADATA['input_size']} × {MODEL_METADATA['input_size']} px] "
-    ":orange-badge[Mô hình thử nghiệm]"
-)
-
-with st.container(border=True):
-    mode = st.segmented_control(
-        "Nguồn dữ liệu",
-        ["Tải ảnh/video", "Webcam"],
-        default="Tải ảnh/video",
-        selection_mode="single",
-        required=True,
+with header_content:
+    st.title("Phân tích trạng thái buồn ngủ của tài xế")
+    st.caption(
+        "Kết hợp MobileNetV2, phát hiện mắt mở và xác nhận "
+        "dấu hiệu theo thời gian"
     )
+    st.markdown(
+        f":blue-badge[{MODEL_METADATA['model_name']}] "
+        f":gray-badge[Đầu vào {MODEL_METADATA['input_size']} × "
+        f"{MODEL_METADATA['input_size']} px] "
+        ":orange-badge[Mô hình thử nghiệm]"
+    )
+with header_source:
+    with st.container(border=True):
+        mode = st.segmented_control(
+            "Nguồn dữ liệu",
+            ["Tải ảnh/video", "Webcam"],
+            default="Tải ảnh/video",
+            selection_mode="single",
+            required=True,
+        )
 
 with st.sidebar:
     st.markdown("### :material/tune: Cấu hình phân tích")
