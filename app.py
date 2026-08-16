@@ -40,6 +40,7 @@ import tensorflow as tf
 print(f"[startup] Imported TensorFlow {tf.__version__}", flush=True)
 from PIL import Image, ImageDraw, ImageFont
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
+from streamlit_webrtc.credentials import get_available_ice_servers
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 from drowsiness_temporal import TemporalDrowsinessTracker
@@ -741,9 +742,16 @@ if mode == "Webcam":
     with st.container(border=True):
         st.markdown("### :material/videocam: Phân tích trực tiếp")
         st.info(
-            "Bật webcam, cấp quyền camera cho trang `localhost`, sau đó nhấn **START**. "
+            "Bật webcam, cấp quyền camera cho trang này, sau đó nhấn **START**. "
             "Ảnh cảnh báo tách riêng hiện áp dụng cho video tải lên."
         )
+        turn_configured = bool(os.getenv("HF_TOKEN"))
+        if not turn_configured:
+            st.caption(
+                ":material/info: Bản Streamlit Cloud hiện chỉ có STUN. "
+                "Nếu kết nối bị chờ lâu, hãy thêm `HF_TOKEN` vào "
+                "**Manage app → Settings → Secrets** để bật TURN."
+            )
         camera_enabled = st.toggle(
             "Khởi tạo webcam",
             value=False,
@@ -763,9 +771,7 @@ if mode == "Webcam":
                 ),
                 media_stream_constraints={"video": True, "audio": False},
                 rtc_configuration={
-                    "iceServers": [
-                        {"urls": ["stun:stun.l.google.com:19302"]}
-                    ]
+                    "iceServers": get_available_ice_servers(),
                 },
                 async_processing=True,
             )

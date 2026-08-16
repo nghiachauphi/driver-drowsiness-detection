@@ -328,6 +328,7 @@ Không sửa đường dẫn máy cũ trong `DDD_Drowsiness_Executed.ipynb`. Scr
 | Cổng 8501 đang được dùng | Thêm `--server.port 8502` vào cuối lệnh Streamlit. |
 | Không thấy camera | Cấp quyền camera cho `localhost` và đóng Zoom/Teams hoặc ứng dụng khác đang dùng webcam. |
 | `NotFoundError: Requested device not found` | Trình duyệt không thấy thiết bị video. Kết nối/mở công tắc webcam, bật camera bằng phím chức năng của laptop, kiểm tra **Device Manager > Cameras**, rồi tải lại trang. Nếu vẫn lỗi, dùng chế độ **Tải ảnh/video**. |
+| `Connection is taking longer than expected` | Streamlit Cloud không vượt qua được NAT/firewall chỉ bằng STUN. Thêm `HF_TOKEN = "hf_..."` vào **Manage app > Settings > Secrets**, lưu lại, reboot app rồi thử lại webcam. |
 
 ## 10. Kiểm tra trước khi chép sang máy khác
 

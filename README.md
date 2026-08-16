@@ -46,7 +46,16 @@ Use Python 3.11. Full setup instructions are in [HUONG_DAN_CAI_DAT.md](HUONG_DAN
    GitHub, and select **Create app**.
 3. Choose this repository, branch `main`, and entry point `app.py`.
 4. In advanced settings, select Python 3.11 when that choice is available.
-5. Deploy. No secrets are required by this application.
+5. For reliable webcam access on Community Cloud, create a Hugging Face access
+   token and add it to **Manage app > Settings > Secrets**:
+
+   ```toml
+   HF_TOKEN = "hf_your_token"
+   ```
+
+   The token is used server-side by `streamlit-webrtc` to request temporary TURN
+   credentials. Image and uploaded-video analysis do not require this secret.
+6. Deploy or reboot the app after saving the secret.
 
 The tracked model is the final 160×160 checkpoint only. Training-phase models,
 datasets, notebooks outputs, and local virtual environments are intentionally
