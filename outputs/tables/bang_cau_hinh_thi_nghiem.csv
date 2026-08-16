@@ -9,8 +9,8 @@ optimizer,Adam
 lr_head,0.001
 lr_finetune,1e-05
 loss,Binary cross-entropy
-epochs_head,2
-epochs_finetune,1
+epochs_head,8
+epochs_finetune,7
 es_patience,4
 rlrop_factor,0.5
 rlrop_patience,2

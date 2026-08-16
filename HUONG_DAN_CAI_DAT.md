@@ -85,7 +85,7 @@ python3.11 --version
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install "streamlit>=1.61" "streamlit-webrtc>=0.77" "tensorflow-cpu>=2.21" "opencv-python-headless==4.10.0.84" "numpy>=1.26" pandas matplotlib seaborn scikit-learn kagglehub nbformat nbclient ipykernel jupyterlab
+.\.venv\Scripts\python.exe -m pip install "streamlit>=1.61" "streamlit-webrtc>=0.77" "tensorflow-cpu>=2.21" "opencv-python-headless==4.10.0.84" "numpy>=1.26" pillow pandas matplotlib seaborn scikit-learn kagglehub nbformat nbclient ipykernel jupyterlab
 ```
 
 Nếu `py` không tồn tại, thay lệnh đầu bằng:
@@ -101,7 +101,7 @@ Không bắt buộc kích hoạt môi trường vì các lệnh trong tài liệ
 ```bash
 python3.11 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install "streamlit>=1.61" "streamlit-webrtc>=0.77" "tensorflow-cpu>=2.21" "opencv-python-headless==4.10.0.84" "numpy>=1.26" pandas matplotlib seaborn scikit-learn kagglehub nbformat nbclient ipykernel jupyterlab
+.venv/bin/python -m pip install "streamlit>=1.61" "streamlit-webrtc>=0.77" "tensorflow-cpu>=2.21" "opencv-python-headless==4.10.0.84" "numpy>=1.26" pillow pandas matplotlib seaborn scikit-learn kagglehub nbformat nbclient ipykernel jupyterlab
 ```
 
 Trên macOS, nếu không cài được `tensorflow-cpu`, thay gói đó bằng `tensorflow>=2.21`.
@@ -236,7 +236,11 @@ Không sửa đường dẫn máy cũ trong `DDD_Drowsiness_Executed.ipynb`. Scr
 2. Chọn **Webcam** hoặc **Tải ảnh/video**.
 3. Với webcam, nhấn **START** và cấp quyền camera cho `localhost`.
 4. Với tệp tải lên, dùng ảnh `JPG/PNG/BMP` hoặc video `MP4/AVI/MOV/MKV`, tối đa 200 MB.
-5. Khung xanh là *Tỉnh táo*; khung đỏ là *Buồn ngủ* khi xác suất lớn hơn hoặc bằng ngưỡng.
+5. Với video, chọn tần suất phân tích, khoảng cách giữa hai ảnh cảnh báo và số ảnh tối đa; sau đó nhấn **Phân tích video và tách ảnh cảnh báo**.
+6. Ứng dụng đặt video gốc và video nhận dạng có khung mặt/xác suất cạnh nhau để so sánh, đồng thời hiển thị đồ thị xác suất theo thời gian.
+7. Các khung hình vượt ngưỡng được tách riêng thành ảnh JPEG; có thể tải video nhận dạng dưới dạng MP4.
+8. Có thể tải một tệp ZIP chứa toàn bộ ảnh cảnh báo và báo cáo CSV gồm thời điểm, số khung hình, xác suất và ngưỡng.
+9. Khung xanh là *Tỉnh táo*; khung đỏ là *Cảnh báo buồn ngủ* khi xác suất lớn hơn hoặc bằng ngưỡng.
 
 ## 9. Xử lý lỗi thường gặp
 

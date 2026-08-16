@@ -7,7 +7,9 @@ A deep learning-based driver drowsiness detection project using MobileNetV2, Ten
 - Detects the largest face in webcam, image, or video input.
 - Predicts a drowsiness probability with a MobileNetV2 binary classifier.
 - Provides real-time webcam inference through WebRTC.
-- Processes uploaded images and videos without requiring a webcam.
+- Shows the original and probability-annotated videos side by side for direct comparison.
+- Extracts threshold-crossing alert frames from uploaded videos as separate JPEG images.
+- Displays a probability timeline and exports alert JPEGs with a CSV manifest in one ZIP archive.
 - Includes a portable local training runner for the DDD Kaggle dataset.
 - Exports experiment metrics, tables, plots, and Keras models.
 
