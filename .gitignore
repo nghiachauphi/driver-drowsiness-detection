@@ -19,8 +19,8 @@ DDD_Drowsiness_Local.ipynb
 
 # Installers and local academic deliverables
 python-*.exe
-*.docx
-*.pptx
+#*.docx
+#*.pptx
 
 # Duplicate exported result bundle
 ket_qua_do_an/
