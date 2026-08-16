@@ -81,6 +81,17 @@ def resolve_model_artifact():
 MODEL_PATH, MODEL_METADATA = resolve_model_artifact()
 
 
+def contains_turn_server(ice_servers):
+    """Return whether an ICE configuration contains a TURN relay URL."""
+    for server in ice_servers:
+        urls = server.get("urls", []) if isinstance(server, dict) else []
+        if isinstance(urls, str):
+            urls = [urls]
+        if any(str(url).lower().startswith(("turn:", "turns:")) for url in urls):
+            return True
+    return False
+
+
 @lru_cache(maxsize=8)
 def load_unicode_font(size):
     """Load a Vietnamese-capable font on Windows, Linux, or macOS."""
@@ -746,7 +757,20 @@ if mode == "Webcam":
             "Ảnh cảnh báo tách riêng hiện áp dụng cho video tải lên."
         )
         turn_configured = bool(os.getenv("HF_TOKEN"))
-        if not turn_configured:
+        ice_servers = get_available_ice_servers()
+        turn_ready = contains_turn_server(ice_servers)
+        if turn_ready:
+            st.success(
+                "TURN đã sẵn sàng cho kết nối webcam trên Cloud.",
+                icon=":material/cloud_done:",
+            )
+        elif turn_configured:
+            st.error(
+                "Đã nhận `HF_TOKEN` nhưng không lấy được máy chủ TURN. "
+                "Hãy kiểm tra token, xem log Cloud và reboot app.",
+                icon=":material/cloud_off:",
+            )
+        else:
             st.caption(
                 ":material/info: Bản Streamlit Cloud hiện chỉ có STUN. "
                 "Nếu kết nối bị chờ lâu, hãy thêm `HF_TOKEN` vào "
@@ -771,7 +795,7 @@ if mode == "Webcam":
                 ),
                 media_stream_constraints={"video": True, "audio": False},
                 rtc_configuration={
-                    "iceServers": get_available_ice_servers(),
+                    "iceServers": ice_servers,
                 },
                 async_processing=True,
             )
