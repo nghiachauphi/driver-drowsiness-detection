@@ -123,6 +123,17 @@ st.set_page_config(
     layout="centered",
 )
 
+st.html(
+    """
+    <style>
+    .st-key-image-result-success [data-testid="stAlert"] p {
+        font-size: 1.075rem;
+        line-height: 1.55;
+    }
+    </style>
+    """
+)
+
 
 @st.cache_resource(show_spinner="Đang nạp mô hình MobileNetV2…")
 def load_model(model_path):
@@ -764,15 +775,18 @@ else:
                             f"vượt ngưỡng {threshold:.0%}."
                         )
                     elif awake_by_eyes:
-                        st.success(
-                            f"Phát hiện đủ hai mắt mở — kết luận **tỉnh táo**. "
-                            f"Điểm thô MobileNetV2 là {probability:.1%} nhưng đã bị "
-                            "bộ kiểm tra mắt mở bác bỏ."
-                        )
+                        with st.container(key="image-result-success"):
+                            st.success(
+                                f"Phát hiện đủ hai mắt mở — kết luận **tỉnh táo**. "
+                                f"Điểm thô MobileNetV2 là {probability:.1%} nhưng đã bị "
+                                "bộ kiểm tra mắt mở bác bỏ."
+                            )
                     else:
-                        st.success(
-                            f"Chưa vượt ngưỡng cảnh báo — điểm mô hình {probability:.1%}."
-                        )
+                        with st.container(key="image-result-success"):
+                            st.success(
+                                f"Chưa vượt ngưỡng cảnh báo — "
+                                f"điểm mô hình {probability:.1%}."
+                            )
 
                     metric_columns = st.columns(4)
                     metric_columns[0].metric("Khuôn mặt", face_count)
