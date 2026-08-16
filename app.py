@@ -107,15 +107,26 @@ def draw_unicode_text(image_bgr, text, position, color_bgr, font_size=24):
     image_pil = Image.fromarray(image_rgb)
     draw = ImageDraw.Draw(image_pil)
     color_rgb = tuple(reversed(color_bgr))
+    stroke_width = max(1, round(font_size / 20))
     draw.text(
         position,
         text,
         font=load_unicode_font(font_size),
         fill=color_rgb,
-        stroke_width=1,
-        stroke_fill=color_rgb,
+        stroke_width=stroke_width,
+        stroke_fill=(0, 0, 0),
     )
     return cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGB2BGR)
+
+
+def fit_overlay_font_size(text, preferred_size, max_width, min_size=20):
+    """Shrink a preferred overlay font only when the label would be clipped."""
+    font = load_unicode_font(preferred_size)
+    left, _, right, _ = font.getbbox(text)
+    text_width = max(1, right - left)
+    if text_width <= max_width:
+        return preferred_size
+    return max(min_size, int(preferred_size * max_width / text_width))
 
 st.set_page_config(
     page_title="Phân tích trạng thái buồn ngủ",
@@ -306,12 +317,24 @@ def draw_prediction(
 ):
     """Draw one prediction using a Vietnamese-capable Unicode font."""
     result = image_bgr.copy()
+    image_height, image_width = result.shape[:2]
+    preferred_font_size = max(
+        32,
+        min(48, round(min(image_height, image_width) * 0.04)),
+    )
     if face_box is None:
+        label = "Không phát hiện khuôn mặt"
+        font_size = fit_overlay_font_size(
+            label,
+            preferred_font_size,
+            max_width=image_width - 40,
+        )
         return draw_unicode_text(
             result,
-            "Không phát hiện khuôn mặt",
-            (20, 12),
+            label,
+            (20, 16),
             (0, 165, 255),
+            font_size=font_size,
         )
 
     x, y, w, h = face_box
@@ -341,11 +364,18 @@ def draw_prediction(
     else:
         color = (0, 190, 0)
     cv2.rectangle(result, (x, y), (x + w, y + h), color, 3)
+    overlay_text = f"{label}: {probability:.1%}"
+    font_size = fit_overlay_font_size(
+        overlay_text,
+        preferred_font_size,
+        max_width=max(80, image_width - x - 16),
+    )
     return draw_unicode_text(
         result,
-        f"{label}: {probability:.1%}",
-        (x, max(4, y - 34)),
+        overlay_text,
+        (x, max(6, y - font_size - 12)),
         color,
+        font_size=font_size,
     )
 
 
