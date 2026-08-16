@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parent
 IMPROVED_MODEL_PATH = ROOT / "outputs" / "models" / "improved_mobilenetv2.keras"
 IMPROVED_METADATA_PATH = ROOT / "outputs" / "results" / "improved_model_metadata.json"
 FALLBACK_MODEL_PATH = ROOT / "outputs" / "models" / "E6_MobileNetV2_subject.keras"
-VIDEO_INFERENCE_VERSION = 3
+VIDEO_INFERENCE_VERSION = 4
 
 
 def resolve_model_artifact():
@@ -314,14 +314,16 @@ def draw_prediction(
     threshold,
     force_awake=False,
     temporal_decision=None,
+    overlay_scale=1.0,
 ):
     """Draw one prediction using a Vietnamese-capable Unicode font."""
     result = image_bgr.copy()
     image_height, image_width = result.shape[:2]
-    preferred_font_size = max(
+    base_font_size = max(
         32,
         min(48, round(min(image_height, image_width) * 0.04)),
     )
+    preferred_font_size = max(20, min(80, round(base_font_size * overlay_scale)))
     if face_box is None:
         label = "Không phát hiện khuôn mặt"
         font_size = fit_overlay_font_size(
@@ -490,6 +492,7 @@ def analyze_uploaded_video(
                                 current_face_box,
                                 threshold,
                                 temporal_decision=current_decision,
+                                overlay_scale=1.8,
                             )
                             encoded, jpeg = cv2.imencode(
                                 ".jpg",
