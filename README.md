@@ -46,16 +46,25 @@ Use Python 3.11. Full setup instructions are in [HUONG_DAN_CAI_DAT.md](HUONG_DAN
    GitHub, and select **Create app**.
 3. Choose this repository, branch `main`, and entry point `app.py`.
 4. In advanced settings, select Python 3.11 when that choice is available.
-5. For reliable webcam access on Community Cloud, create a Twilio account and
-   add its Account SID and Auth Token to **Manage app > Settings > Secrets**:
+5. For reliable webcam access on Community Cloud, create a Metered TURN
+   credential and add it to **Manage app > Settings > Secrets**. The free plan
+   uses `standard.relay.metered.ca`:
 
    ```toml
-   TWILIO_ACCOUNT_SID = "AC_your_account_sid"
-   TWILIO_AUTH_TOKEN = "your_auth_token"
+   TURN_PROVIDER = "Metered"
+   TURN_URLS = [
+     "turn:standard.relay.metered.ca:80",
+     "turn:standard.relay.metered.ca:80?transport=tcp",
+     "turn:standard.relay.metered.ca:443",
+     "turns:standard.relay.metered.ca:443?transport=tcp",
+   ]
+   TURN_USERNAME = "your_metered_username"
+   TURN_CREDENTIAL = "your_metered_password"
    ```
 
-   These secrets are used server-side by `streamlit-webrtc` to request temporary
-   TURN credentials. Image and uploaded-video analysis do not require them.
+   Copy the username and credential/password from the Metered TURN dashboard.
+   Twilio remains an optional fallback for upgraded (non-Trial) accounts. Image
+   and uploaded-video analysis do not require TURN.
 6. Deploy or reboot the app after saving the secret.
 
 The tracked model is the final 160×160 checkpoint only. Training-phase models,

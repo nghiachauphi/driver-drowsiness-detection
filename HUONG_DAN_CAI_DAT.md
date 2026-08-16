@@ -328,7 +328,7 @@ Không sửa đường dẫn máy cũ trong `DDD_Drowsiness_Executed.ipynb`. Scr
 | Cổng 8501 đang được dùng | Thêm `--server.port 8502` vào cuối lệnh Streamlit. |
 | Không thấy camera | Cấp quyền camera cho `localhost` và đóng Zoom/Teams hoặc ứng dụng khác đang dùng webcam. |
 | `NotFoundError: Requested device not found` | Trình duyệt không thấy thiết bị video. Kết nối/mở công tắc webcam, bật camera bằng phím chức năng của laptop, kiểm tra **Device Manager > Cameras**, rồi tải lại trang. Nếu vẫn lỗi, dùng chế độ **Tải ảnh/video**. |
-| `Connection is taking longer than expected` | Streamlit Cloud không vượt qua được NAT/firewall chỉ bằng STUN. Thêm `TWILIO_ACCOUNT_SID` và `TWILIO_AUTH_TOKEN` vào **Manage app > Settings > Secrets**, lưu lại, reboot app rồi thử lại webcam. |
+| `Connection is taking longer than expected` | Streamlit Cloud không vượt qua được NAT/firewall chỉ bằng STUN. Thêm `TURN_URLS`, `TURN_USERNAME` và `TURN_CREDENTIAL` của Metered/coturn vào **Manage app > Settings > Secrets**, lưu lại, reboot app rồi thử lại webcam. Tài khoản Twilio Trial không cấp TURN/NTS. |
 
 ## 10. Kiểm tra trước khi chép sang máy khác
 

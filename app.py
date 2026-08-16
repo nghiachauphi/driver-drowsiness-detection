@@ -107,6 +107,29 @@ def get_secret_value(name):
     return str(value).strip()
 
 
+def get_secret_list(name):
+    """Read a TOML array or a comma/newline-separated environment variable."""
+    try:
+        value = st.secrets.get(name, None)
+    except Exception:
+        value = None
+    if value is None:
+        value = os.getenv(name, "")
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    text = str(value).strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except (TypeError, ValueError):
+        pass
+    return [item.strip() for item in re.split(r"[,\n]", text) if item.strip()]
+
+
 def package_version(name):
     """Return a package version for diagnostics without failing the app."""
     try:
@@ -207,6 +230,14 @@ def resolve_ice_servers():
     google_stun = [{"urls": "stun:stun.l.google.com:19302"}]
     errors = []
 
+    custom_turn_urls = get_secret_list("TURN_URLS")
+    custom_turn_username = get_secret_value("TURN_USERNAME")
+    custom_turn_credential = get_secret_value("TURN_CREDENTIAL")
+    custom_turn_provider = get_secret_value("TURN_PROVIDER") or "TURN tùy chỉnh"
+    custom_turn_configured = bool(
+        custom_turn_urls or custom_turn_username or custom_turn_credential
+    )
+
     twilio_sid = get_secret_value("TWILIO_ACCOUNT_SID")
     twilio_token = get_secret_value("TWILIO_AUTH_TOKEN")
     twilio_configured = bool(twilio_sid or twilio_token)
@@ -216,6 +247,11 @@ def resolve_ice_servers():
     log_diagnostic_once(
         "turn_configuration",
         "turn_configuration",
+        custom_turn_provider=custom_turn_provider,
+        custom_turn_urls_present=bool(custom_turn_urls),
+        custom_turn_url_count=len(custom_turn_urls),
+        custom_turn_username_present=bool(custom_turn_username),
+        custom_turn_credential_present=bool(custom_turn_credential),
         twilio_sid_present=bool(twilio_sid),
         twilio_sid_length=len(twilio_sid),
         twilio_sid_format_valid=twilio_sid.startswith("AC")
@@ -224,6 +260,49 @@ def resolve_ice_servers():
         twilio_auth_token_length=len(twilio_token),
         hf_token_present=hf_configured,
     )
+
+    if custom_turn_configured:
+        missing = []
+        if not custom_turn_urls:
+            missing.append("TURN_URLS")
+        if not custom_turn_username:
+            missing.append("TURN_USERNAME")
+        if not custom_turn_credential:
+            missing.append("TURN_CREDENTIAL")
+        invalid_urls = [
+            url
+            for url in custom_turn_urls
+            if not url.lower().startswith(("turn:", "turns:"))
+        ]
+        if missing:
+            errors.append(
+                (
+                    custom_turn_provider,
+                    "Thiếu " + ", ".join(f"`{name}`" for name in missing) + ".",
+                )
+            )
+        elif invalid_urls:
+            errors.append(
+                (
+                    custom_turn_provider,
+                    "`TURN_URLS` chỉ được chứa URL bắt đầu bằng `turn:` hoặc `turns:`.",
+                )
+            )
+        else:
+            custom_ice_servers = google_stun + [
+                {
+                    "urls": custom_turn_urls,
+                    "username": custom_turn_username,
+                    "credential": custom_turn_credential,
+                }
+            ]
+            log_diagnostic_once(
+                "custom_turn_ready",
+                "turn_ready",
+                provider=custom_turn_provider,
+                ice_endpoints=summarize_ice_servers(custom_ice_servers),
+            )
+            return custom_ice_servers, custom_turn_provider, errors, True
 
     if twilio_configured:
         if not twilio_sid or not twilio_token:
@@ -281,7 +360,12 @@ def resolve_ice_servers():
                     message=safe_message,
                     traceback=safe_traceback,
                 )
-                if status in (401, 403):
+                if code == 20003 and "trial account" in safe_message.lower():
+                    detail = (
+                        "Tài khoản Twilio Trial không được sử dụng TURN/NTS. "
+                        "Hãy dùng TURN tùy chỉnh hoặc nâng cấp tài khoản Twilio."
+                    )
+                elif status in (401, 403):
                     detail = (
                         "Twilio từ chối xác thực. Hãy sao chép lại **Account SID** và "
                         "**Auth Token chính** (không phải API Key Secret), rồi reboot app."
@@ -317,7 +401,12 @@ def resolve_ice_servers():
                 ("Hugging Face", "Dịch vụ TURN dự phòng hiện không phản hồi.")
             )
 
-    return google_stun, None, errors, twilio_configured or hf_configured
+    return (
+        google_stun,
+        None,
+        errors,
+        custom_turn_configured or twilio_configured or hf_configured,
+    )
 
 
 @lru_cache(maxsize=8)
@@ -990,7 +1079,7 @@ if mode == "Webcam":
         )
         if turn_provider:
             st.success(
-                f"TURN {turn_provider} đã sẵn sàng cho webcam trên Cloud.",
+                f"Cấu hình TURN {turn_provider} đã được nạp cho webcam trên Cloud.",
                 icon=":material/cloud_done:",
             )
         elif turn_configured:
@@ -1002,8 +1091,8 @@ if mode == "Webcam":
         else:
             st.caption(
                 ":material/info: Bản Streamlit Cloud hiện chỉ có STUN. "
-                "Nếu kết nối bị chờ lâu, hãy thêm thông tin Twilio vào "
-                "**Manage app → Settings → Secrets** để bật TURN."
+                "Nếu kết nối bị chờ lâu, hãy thêm `TURN_URLS`, `TURN_USERNAME` "
+                "và `TURN_CREDENTIAL` vào **Manage app → Settings → Secrets**."
             )
         camera_enabled = st.toggle(
             "Khởi tạo webcam",
