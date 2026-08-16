@@ -28,3 +28,4 @@ ket_qua_do_an/
 # Keep only the model required by the Streamlit app
 outputs/models/*.keras
 !outputs/models/E6_MobileNetV2_subject.keras
+!outputs/models/improved_mobilenetv2.keras

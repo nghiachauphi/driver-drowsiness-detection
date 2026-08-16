@@ -29,13 +29,28 @@ A TensorFlow, OpenCV, and Streamlit project for research on driver-drowsiness de
     `-- tables/improved_subject_metrics.csv
 ```
 
-## Run the application
+## Run the application Local
 
 Use Python 3.11. Full setup instructions are in [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
+
+## Deploy to Streamlit Community Cloud
+
+1. Commit and push `app.py`, `drowsiness_temporal.py`, `requirements.txt`,
+   `outputs/models/improved_mobilenetv2.keras`, and
+   `outputs/results/improved_model_metadata.json` to GitHub.
+2. Open [Streamlit Community Cloud](https://share.streamlit.io/), sign in with
+   GitHub, and select **Create app**.
+3. Choose this repository, branch `main`, and entry point `app.py`.
+4. In advanced settings, select Python 3.11 when that choice is available.
+5. Deploy. No secrets are required by this application.
+
+The tracked model is the final 160×160 checkpoint only. Training-phase models,
+datasets, notebooks outputs, and local virtual environments are intentionally
+excluded from the deployment bundle.
 
 ## Train and evaluate the improved pipeline
 
