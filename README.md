@@ -65,6 +65,10 @@ Use Python 3.11. Full setup instructions are in [HUONG_DAN_CAI_DAT.md](HUONG_DAN
    Copy the username and credential/password from the Metered TURN dashboard.
    Twilio remains an optional fallback for upgraded (non-Trial) accounts. Image
    and uploaded-video analysis do not require TURN.
+
+   The browser receives all endpoints. The Streamlit server prioritizes
+   `turns:...:443?transport=tcp`, because `aiortc` selects only one TURN URL and
+   Cloud environments often block outbound UDP.
 6. Deploy or reboot the app after saving the secret.
 
 The tracked model is the final 160×160 checkpoint only. Training-phase models,

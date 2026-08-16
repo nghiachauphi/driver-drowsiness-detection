@@ -186,6 +186,38 @@ def summarize_ice_servers(ice_servers):
     return endpoints
 
 
+def prioritize_server_ice_servers(ice_servers):
+    """Put TLS/TCP 443 first because aiortc uses only one TURN endpoint."""
+
+    def turn_priority(url):
+        normalized = str(url).lower()
+        if normalized.startswith("turns:") and ":443" in normalized:
+            return 0
+        if (
+            normalized.startswith("turn:")
+            and ":443" in normalized
+            and "transport=tcp" in normalized
+        ):
+            return 1
+        if normalized.startswith("turn:") and "transport=tcp" in normalized:
+            return 2
+        if normalized.startswith(("turn:", "turns:")):
+            return 3
+        return 4
+
+    prioritized = []
+    for server in ice_servers:
+        if not isinstance(server, dict):
+            prioritized.append(server)
+            continue
+        server_copy = dict(server)
+        urls = server_copy.get("urls", [])
+        if isinstance(urls, list):
+            server_copy["urls"] = sorted(urls, key=turn_priority)
+        prioritized.append(server_copy)
+    return prioritized
+
+
 def log_client_environment(turn_provider, ice_servers):
     """Log browser/runtime context useful for diagnosing WebRTC connection issues."""
     try:
@@ -1105,6 +1137,13 @@ if mode == "Webcam":
                 f"`{diagnostic_session_id()}` — dùng mã này để tìm log của đúng người dùng."
             )
             log_client_environment(turn_provider, ice_servers)
+            server_ice_servers = prioritize_server_ice_servers(ice_servers)
+            log_diagnostic_once(
+                "server_ice_selection",
+                "server_ice_selection",
+                ice_endpoints=summarize_ice_servers(server_ice_servers),
+                note="aiortc uses the first supported TURN endpoint",
+            )
             ctx = webrtc_streamer(
                 key="drowsiness-camera",
                 video_processor_factory=lambda: DrowsinessProcessor(
@@ -1117,9 +1156,10 @@ if mode == "Webcam":
                     closed_ratio_threshold,
                 ),
                 media_stream_constraints={"video": True, "audio": False},
-                rtc_configuration={
+                frontend_rtc_configuration={
                     "iceServers": ice_servers,
                 },
+                server_rtc_configuration={"iceServers": server_ice_servers},
                 async_processing=True,
                 on_change=log_webrtc_state_change,
             )
